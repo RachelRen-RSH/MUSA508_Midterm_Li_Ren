@@ -1,0 +1,107 @@
+---
+title: "Midterm_markdown"
+output: html_document
+date: "2023-09-29"
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+## I. Data Wrangling
+### Import packages and start the setting
+```{r setup_packages, warning = FALSE, message = FALSE}
+# Load Libraries
+
+library(tidyverse)
+library(tidycensus)
+library(sf)
+library(kableExtra)
+
+
+
+options(scipen=999)
+options(tigris_class = "sf")
+
+source("https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-Landing/master/functions.r")
+```
+
+```{r load_key, warning = FALSE, eval = FALSE}
+census_api_key("6a81f5ae68fcb8e26d2f0a80f4232c5e503b553d", overwrite = TRUE)
+```
+### Read Philadelphia block groups and housing prices
+```{r}
+Philly_block_groups <-
+  st_read("https://opendata.arcgis.com/datasets/2f982bada233478ea0100528227febce_0.geojson") %>%
+  st_transform('ESRI:102728')
+  
+Philly_price <-
+  st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/Data/studentData.geojson") %>%
+  st_transform('ESRI: 102728')
+```
+
+### Read other variables in geojson format
+```{r}
+Shooting_victims <-
+  st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/Data/shootings.geojson") %>%
+  st_transform('ESRI: 102728')
+
+PPR_Sites <-
+  st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/Data/PPR_Program_Sites.geojson") %>%
+  st_transform('ESRI: 102728')
+
+Commercial_Corridors <-
+  st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/Data/Commercial_Corridors.geojson") %>%
+  st_transform('ESRI: 102728')
+
+schools <- 
+  read.csv("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/Data/Schools.csv")
+
+schools.sf <- 
+  schools %>% 
+  st_as_sf(coords = c("X", "Y"), crs = 4326, agr = "constant") %>%
+  st_transform('ESRI:102728')
+```
+
+### Get and clean the variables in the 2021 Census data
+```{r results='hide'}
+## all of the variables are in block group
+blockgroup21 <-  
+  get_acs(geography = "block group",
+          variables = c("B19013_001E","B99051_005E",
+                        "B01003_001E","B07201_003E",
+                        "B07201_001E"), 
+          year=2021, state=42,
+          county=101, geometry=TRUE) %>% 
+  st_transform('ESRI:102728')
+```
+
+```{r results='hide'}
+variables2021_blockGroup <- load_variables(2021,'acs5') %>% 
+dplyr::filter(geography == 'block group')
+
+variables2021_tract <- load_variables(2021,'acs5') %>% 
+dplyr::filter(geography == 'tract')
+```
+
+```{r results='hide'}
+blockgroup21 <- 
+  blockgroup21 %>%
+  dplyr::select( -NAME, -moe) %>%
+  spread(key = variable, value = estimate) %>%
+  rename(TotalPop = B01003_001, 
+         ForeignBorn = B99051_005,
+         MedHHInc = B19013_001, 
+         MobilityDifferentHouse = B07201_003,
+         MobilityTotal = B07201_001
+         )
+
+
+# Let's create new rate variables using mutate
+
+blockgroup21 <- 
+  blockgroup21 %>%
+  mutate(pctForeign = ifelse(TotalPop > 0, ForeignBorn / TotalPop, 0),
+         pctMobility = ifelse(MobilityTotal > 0, (MobilityDifferentHouse / MobilityTotal), 0),
+         year = "2021") %>%
+  dplyr::select(-ForeignBorn,-MobilityDifferentHouse,-MobilityTotal,-TotalPop)
+```
+
