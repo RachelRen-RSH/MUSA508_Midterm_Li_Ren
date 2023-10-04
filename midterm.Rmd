@@ -10,12 +10,19 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ### Import packages and start the setting
 ```{r setup_packages, warning = FALSE, message = FALSE}
 # Load Libraries
-
+library(geos)
+library(rsgeo)
 library(tidyverse)
 library(tidycensus)
 library(sf)
 library(kableExtra)
-
+library(spdep)
+library(caret)
+library(ckanr)
+library(FNN)
+library(grid)
+library(gridExtra)
+library(ggcorrplot)
 
 
 options(scipen=999)
@@ -34,26 +41,29 @@ Philly_block_groups <-
   st_transform('ESRI:102728')
   
 Philly_price <-
-  st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/Data/studentData.geojson") %>%
-  st_transform('ESRI: 102728')
+  st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/MUSA508_Midterm_Li_Ren/Data/studentData.geojson") %>%
+  st_transform('ESRI: 102728') %>%
+  filter(toPredict == "MODELLING") ## select data containing the sales price
+
+Philly_price_clean <- Philly_price[, c("objectid", "census_tract", "exterior_condition", "number_of_rooms", "quality_grade", "sale_price", "year_built", "year_built_estimate", "geometry")] ## Select columns we use
 ```
 
 ### Read other variables in geojson format
 ```{r}
 Shooting_victims <-
-  st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/Data/shootings.geojson") %>%
+  st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/MUSA508_Midterm_Li_Ren/Data/shootings.geojson") %>%
   st_transform('ESRI: 102728')
 
 PPR_Sites <-
-  st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/Data/PPR_Program_Sites.geojson") %>%
+  st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/MUSA508_Midterm_Li_Ren/Data/PPR_Program_Sites.geojson") %>%
   st_transform('ESRI: 102728')
 
 Commercial_Corridors <-
-  st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/Data/Commercial_Corridors.geojson") %>%
+  st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/MUSA508_Midterm_Li_Ren/Data/Commercial_Corridors.geojson") %>%
   st_transform('ESRI: 102728')
 
 schools <- 
-  read.csv("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/Data/Schools.csv")
+  read.csv("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/MUSA508_Midterm_Li_Ren/Data/Schools.csv")
 
 schools.sf <- 
   schools %>% 
@@ -104,4 +114,81 @@ blockgroup21 <-
          year = "2021") %>%
   dplyr::select(-ForeignBorn,-MobilityDifferentHouse,-MobilityTotal,-TotalPop)
 ```
+
+### Test the variables
+```{r}
+ggplot() +
+  geom_sf(data = Philly_block_groups, fill = "grey40") +
+  geom_sf(data = schools.sf, 
+          show.legend = "point", size = .75) +
+  mapTheme()
+```
+### Variable 1 (Neighborhood characteristics): Shooting incidents
+Calculate the 5 average nearest neighbor distance for victims
+```{r}
+st_c <- st_coordinates
+
+Shooting_victims <- 
+  Shooting_victims %>%
+  filter(!is.na(point_x)) %>%
+  filter(!is.na(point_y))
+
+Philly_price_clean <-
+  Philly_price_clean %>% 
+    mutate(
+      shooting_nn5 = nn_function(st_c(Philly_price_clean), st_c(Shooting_victims), 5))
+```
+
+### Variable 2 (Neighborhood characteristics): School districts (Distance / enrollment / public private)
+Calculate the distance of each house to the nearest schools
+```{r}
+nearest_school <- sf::st_nearest_feature(Philly_price_clean, schools.sf)
+
+# convert to rsgeo geometries
+x <- rsgeo::as_rsgeo(Philly_price_clean)
+y <- rsgeo::as_rsgeo(schools.sf)
+
+# calculate distance
+Philly_price_clean$dist_to_school <- rsgeo::distance_euclidean_pairwise(x, y[nearest_school])
+```
+### Variable 3 (Neighborhood characteristics): Commercial Corridors
+Calculate the distance of each house to the nearest commercial corridors
+```{r}
+nearest_Commercial <- sf::st_nearest_feature(Philly_price_clean, Commercial_Corridors)
+
+# convert to rsgeo geometries
+x <- rsgeo::as_rsgeo(Philly_price_clean)
+y <- rsgeo::as_rsgeo(Commercial_Corridors)
+
+# calculate distance
+Philly_price_clean$dist_to_commerce <- rsgeo::distance_euclidean_pairwise(x, y[nearest_Commercial])
+```
+
+### Variable 4 (Neighborhood characteristics): Parks & Recreational Centers
+Calculate the distance of each house to the nearest PPR
+```{r}
+nearest_PPR <- sf::st_nearest_feature(Philly_price_clean, PPR_Sites)
+
+# convert to rsgeo geometries
+x <- rsgeo::as_rsgeo(Philly_price_clean)
+y <- rsgeo::as_rsgeo(PPR_Sites)
+
+# calculate distance
+Philly_price_clean$dist_to_PPR <- rsgeo::distance_euclidean_pairwise(x, y[nearest_PPR])
+```
+### Census variables: 
+Merge the census data by block groups to the housing price dataset
+```{r}
+Philly_Housing_joined <- st_join(Philly_price_clean, blockgroup21, join = st_within)
+```
+
+### Test joined data map:
+```{r}
+ggplot() +
+  geom_sf(data = blockgroup21, fill = "grey40") +
+  geom_sf(data = Philly_Housing_joined, aes(colour = q5(sale_price)), 
+          show.legend = "point", size = .75) +
+  mapTheme()
+```
+
 
