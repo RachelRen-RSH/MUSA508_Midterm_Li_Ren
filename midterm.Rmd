@@ -16,6 +16,8 @@ library(tidyverse)
 library(tidycensus)
 library(sf)
 library(kableExtra)
+library(knitr)
+library(dplyr)
 library(spdep)
 library(caret)
 library(ckanr)
@@ -23,6 +25,7 @@ library(FNN)
 library(grid)
 library(gridExtra)
 library(ggcorrplot)
+library(stargazer)
 
 
 options(scipen=999)
@@ -45,7 +48,13 @@ Philly_price <-
   st_transform('ESRI: 102728') %>%
   filter(toPredict == "MODELLING") ## select data containing the sales price
 
-Philly_price_clean <- Philly_price[, c("objectid", "census_tract", "exterior_condition", "number_of_rooms", "quality_grade", "sale_price", "year_built", "year_built_estimate", "geometry")] ## Select columns we use
+Philly_price_clean <- Philly_price[, c("objectid", "census_tract", "exterior_condition", "number_of_bedrooms", "quality_grade", "sale_price", "year_built", "geometry")] ## Select columns we use
+
+## Calculate the age of the house
+Philly_price_clean <- 
+  Philly_price_clean %>%
+  mutate(houseAge = ifelse((year_built > 0 & year_built < 2023), 2023-year_built, 0))
+
 ```
 
 ### Read other variables in geojson format
@@ -151,6 +160,7 @@ y <- rsgeo::as_rsgeo(schools.sf)
 # calculate distance
 Philly_price_clean$dist_to_school <- rsgeo::distance_euclidean_pairwise(x, y[nearest_school])
 ```
+
 ### Variable 3 (Neighborhood characteristics): Commercial Corridors
 Calculate the distance of each house to the nearest commercial corridors
 ```{r}
@@ -189,6 +199,93 @@ ggplot() +
   geom_sf(data = Philly_Housing_joined, aes(colour = q5(sale_price)), 
           show.legend = "point", size = .75) +
   mapTheme()
+```
+
+
+### A table of summary statistics with variable descriptions
+```{r summary_table, results = "asis"}
+### Input the average value of the variables with missing observations (N/A)
+numeric_columns <- sapply(Philly_Housing_joined, is.numeric)
+for (col in names(Philly_Housing_joined)[numeric_columns]) {
+  col_mean <- mean(Philly_Housing_joined[[col]], na.rm = TRUE)
+  Philly_Housing_joined[[col]][is.na(Philly_Housing_joined[[col]])] <- col_mean
+}
+# price_variables <- Philly_Housing_joined[, c("houseAge")]
+# stargazer(price_variables, type = "text")
+
+selected_columns <- st_drop_geometry(Philly_Housing_joined) %>%
+  select(houseAge, shooting_nn5, dist_to_school)
+# Compute summary statistics for the selected columns
+summary_data <- selected_columns %>%
+  summarise(
+    Variable = "House age",
+    Mean = mean(houseAge),
+    StdDev = sd(houseAge),
+    Min = min(houseAge),
+    Max = max(houseAge)
+  ) %>%
+  bind_rows(
+    selected_columns %>%
+      summarise(
+        Variable = "Shooting_nn5",
+        Mean = mean(shooting_nn5),
+        StdDev = sd(shooting_nn5),
+        Min = min(shooting_nn5),
+        Max = max(shooting_nn5)
+      )
+  )
+
+kable(summary_data, format = "html")
+```
+
+### Home price correlation scatterplot with median household income
+```{r}
+ggplot(Philly_Housing_joined, aes(x = MedHHInc, y = sale_price)) +
+  geom_point(size = .5) +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  labs(
+    title = "Price as a function of median household income",
+    x = "Median Household Income",
+    y = "Home Price"
+  ) +
+  theme_minimal()
+```
+
+
+### Home price correlation scatterplot with house age
+```{r}
+ggplot(Philly_Housing_joined, aes(x = houseAge, y = sale_price)) +
+  geom_point(size = .5) +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  labs(
+    title = "Price as a function of house age",
+    x = "Age",
+    y = "Home Price"
+  ) +
+  theme_minimal()
+```
+
+### Develop 1 map of dependent variable (sale price)
+```{r}
+mean_sale_price <- Philly_Housing_joined %>%
+  group_by(GEOID) %>%
+  summarize(MeanSalePrice = mean(sale_price))
+
+blockgroup21 <- st_join(blockgroup21, mean_sale_price, by = "GEOID")
+blockgroup21$MeanSalePrice.x[is.na(blockgroup21$MeanSalePrice)] <- 0
+ggplot() +
+  geom_sf(data = blockgroup21, aes(fill = MeanSalePrice)) +
+  scale_fill_gradient(low = "lightblue", high = "darkblue", name = "Sale Price (U.S. Dollars)") +
+  labs(title = "Choropleth Map of Housing Sale Price by Block Groups") +
+  theme_minimal()
+```
+### Develop a map of most interesting independent variables: Geographic Mobility
+```{r}
+ggplot() +
+  geom_sf(data = blockgroup21, aes(fill = pctMobility)) +
+  scale_fill_gradient(low = "yellow", high = "red", name = "Geographic Mobility Rate") +
+  labs(title = "Choropleth Map of Geographic Mobility by Block Groups") +
+  theme_minimal()
 ```
 
 
