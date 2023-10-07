@@ -44,7 +44,7 @@ Philly_block_groups <-
   st_transform('ESRI:102728')
   
 Philly_price <-
-  st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/MUSA508_Midterm_Li_Ren/Data/studentData.geojson") %>%
+  st_read("C:/Users/Jingyi's lenovo/Desktop/Penn/Fall 2023/MUSA 5080/midterm/studentData.geojson") %>%
   st_transform('ESRI: 102728') %>%
   filter(toPredict == "MODELLING") ## select data containing the sales price
 
@@ -60,19 +60,19 @@ Philly_price_clean <-
 ### Read other variables in geojson format
 ```{r}
 Shooting_victims <-
-  st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/MUSA508_Midterm_Li_Ren/Data/shootings.geojson") %>%
+  st_read("C:/Users/Jingyi's lenovo/Desktop/Penn/Fall 2023/MUSA 5080/midterm/shootings.geojson") %>%
   st_transform('ESRI: 102728')
 
 PPR_Sites <-
-  st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/MUSA508_Midterm_Li_Ren/Data/PPR_Program_Sites.geojson") %>%
+  st_read("C:/Users/Jingyi's lenovo/Desktop/Penn/Fall 2023/MUSA 5080/midterm/PPR_Program_Sites.geojson") %>%
   st_transform('ESRI: 102728')
 
 Commercial_Corridors <-
-  st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/MUSA508_Midterm_Li_Ren/Data/Commercial_Corridors.geojson") %>%
+  st_read("C:/Users/Jingyi's lenovo/Desktop/Penn/Fall 2023/MUSA 5080/midterm/Commercial_Corridors.geojson") %>%
   st_transform('ESRI: 102728')
 
 schools <- 
-  read.csv("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/MUSA508_Midterm_Li_Ren/Data/Schools.csv")
+  read.csv("C:/Users/Jingyi's lenovo/Desktop/Penn/Fall 2023/MUSA 5080/midterm/Schools.csv")
 
 schools.sf <- 
   schools %>% 
@@ -133,19 +133,27 @@ ggplot() +
   mapTheme()
 ```
 ### Variable 1 (Neighborhood characteristics): Shooting incidents
-Calculate the 5 average nearest neighbor distance for victims
+Calculate the count of victims shot in head within a 660 buffer of each house
 ```{r}
-st_c <- st_coordinates
+Shooting_victims %>% 
+group_by(wound) %>%
+  summarize(count = n()) %>%
+  arrange(-count)
 
-Shooting_victims <- 
+PhillyShootingHead.sf <-
   Shooting_victims %>%
-  filter(!is.na(point_x)) %>%
-  filter(!is.na(point_y))
+    filter(wound == "Head",
+           point_y > -1) %>%
+    dplyr::select(point_y, point_x) %>%
+    na.omit() %>%
+    st_as_sf(coords = c("Long", "Lat")) %>%
+    st_transform('ESRI:102728') %>%
+    distinct()
 
-Philly_price_clean <-
-  Philly_price_clean %>% 
-    mutate(
-      shooting_nn5 = nn_function(st_c(Philly_price_clean), st_c(Shooting_victims), 5))
+Philly_price_clean$shooting.Buffer <- Philly_price_clean %>% 
+    st_buffer(660) %>% 
+    aggregate(mutate(PhillyShootingHead.sf, counter = 1),., sum) %>%
+    pull(counter)
 ```
 
 ### Variable 2 (Neighborhood characteristics): School districts (Distance / enrollment / public private)
@@ -212,9 +220,9 @@ for (col in names(Philly_Housing_joined)[numeric_columns]) {
 }
 # price_variables <- Philly_Housing_joined[, c("houseAge")]
 # stargazer(price_variables, type = "text")
-summary_fields <- Philly_Housing_joined[c("exterior_condition","number_of_bedrooms","houseAge", "MedHHInc", "pctForeign", "pctMobility", "shooting_nn5", "dist_to_school", "dist_to_commerce", "dist_to_PPR")]
+summary_fields <- Philly_Housing_joined[c("exterior_condition","number_of_bedrooms","houseAge", "MedHHInc", "pctForeign", "pctMobility", "shooting.Buffer", "dist_to_school", "dist_to_commerce", "dist_to_PPR")]
 #table_column_labels = c("Exterior Condition", "Bedrooms", "House Age", "")
-descriptions <- c("exterior_condition","number_of_bedrooms","houseAge", "MedHHInc", "pctForeign", "pctMobility", "shooting_nn5", "dist_to_school", "dist_to_commerce", "dist_to_PPR")
+descriptions <- c("exterior_condition","number_of_bedrooms","houseAge", "MedHHInc", "pctForeign", "pctMobility", "shooting.Buffer", "dist_to_school", "dist_to_commerce", "dist_to_PPR")
 
 stargazer(as.data.frame(summary_fields), 
           type = "html", 
@@ -225,6 +233,20 @@ stargazer(as.data.frame(summary_fields),
           flip = TRUE, 
           column.labels = c("Internal characteristics", "Demographics", "Amenities"), 
           column.separate = c(3, 3, 4))
+
+```
+### Correlation Matrix
+```{r Corre Matrix}
+numericVars <- 
+  select_if(st_drop_geometry(Philly_price_clean), is.numeric) %>% na.omit()
+
+ggcorrplot(
+  round(cor(numericVars), 1), 
+  p.mat = cor_pmat(numericVars),
+  colors = c("#25CB10", "white", "#FA7800"),
+  type="lower",
+  insig = "blank") +  
+    labs(title = "Correlation across numeric variables") 
 
 ```
 
@@ -254,6 +276,31 @@ ggplot(Philly_Housing_joined, aes(x = houseAge, y = sale_price)) +
   ) +
   theme_minimal()
 ```
+### Home Price Correlation Scatterplot with Distance to Schools
+```{r}
+ggplot(Philly_Housing_joined, aes(x = dist_to_school, y = sale_price)) +
+  geom_point(size = .5) +
+  geom_smooth(method = "lm", se = FALSE, color = "orange") +
+  labs(
+    title = "Price as a function of distance to school",
+    x = "Distance to School",
+    y = "Home Price"
+  ) +
+  theme_minimal()
+```
+### Home Price Correlation with Distance to Parks and Recreation
+```{r}
+ggplot(Philly_Housing_joined, aes(x = dist_to_PPR, y = sale_price)) +
+  geom_point(size = .5) +
+  geom_smooth(method = "lm", se = FALSE, color = "orange") +
+  labs(
+    title = "Price as a function of distance to Parks and Recreation",
+    x = "Distance to Parks and Recreation",
+    y = "Home Price"
+  ) +
+  theme_minimal()
+```
+
 
 ### Develop 1 map of dependent variable (sale price)
 ```{r}
@@ -277,7 +324,51 @@ ggplot() +
   labs(title = "Choropleth Map of Geographic Mobility by Block Groups") +
   theme_minimal()
 ```
+### Develop map of most interesting independent variables: School Density
+```{r}
+mean_school_dis <- Philly_Housing_joined %>%
+  group_by(GEOID) %>%
+  summarize(MeanSchoolDis = mean(dist_to_school))
 
+blockgroup21 <- st_join(blockgroup21, mean_school_dis, by = "GEOID")
+blockgroup21$MeanSchoolDis.x[is.na(blockgroup21$MeanSchoolDis)] <- 0
+ggplot() +
+  geom_sf(data = blockgroup21, aes(fill = MeanSchoolDis)) +
+  scale_fill_gradient(low = "lightblue", high = "darkblue", name = "Average Distance") +
+  labs(title = "Choropleth Map of Distance to school by Block Groups") +
+  theme_minimal()
+```
+
+### Develop a map of most interesting independent variable: Shooting Victims with Head Injuries
+```{r}
+Shooting_victims %>% 
+group_by(wound) %>%
+  summarize(count = n()) %>%
+  arrange(-count) %>%
+  kable() %>%
+  kable_styling()
+
+PhillyShootingHead.sf <-
+  Shooting_victims %>%
+    filter(wound == "Head",
+           point_y > -1) %>%
+    dplyr::select(point_y, point_x) %>%
+    na.omit() %>%
+    st_as_sf(coords = c("Long", "Lat")) %>%
+    st_transform('ESRI:102728') %>%
+    distinct()
+
+blockgroup21$shooting.Buffer <- blockgroup21 %>% 
+    st_buffer(660) %>% 
+    aggregate(mutate(PhillyShootingHead.sf, counter = 1),., sum) %>%
+    pull(counter)
+
+ggplot() +
+  geom_sf(data = blockgroup21, aes(fill = shooting.Buffer)) +
+  scale_fill_gradient(low = "#f0f9e8", high = "#0868ac", name = "Shooting victims with Head Injuries") +
+  labs(title = "Choropleth Map of Shooting Victims with Head Injuries") +
+  theme_minimal()
+```
 ## Methods
 
 ## Results
@@ -291,7 +382,7 @@ PhillyPrice.test <- Philly_Housing_joined[-inTrain,]
  
 reg.training <-
   lm(sale_price ~ ., data = as.data.frame(PhillyPrice.training) %>%
-                             dplyr::select(sale_price, exterior_condition, number_of_bedrooms, quality_grade, houseAge, shooting_nn5, dist_to_school, dist_to_commerce, dist_to_PPR, MedHHInc, pctForeign, pctMobility))
+                             dplyr::select(sale_price, exterior_condition, number_of_bedrooms, quality_grade, houseAge, shooting.Buffer, dist_to_school, dist_to_commerce, dist_to_PPR, MedHHInc, pctForeign, pctMobility))
 
 summary_lm <- summary(reg.training)
 
@@ -301,14 +392,18 @@ stargazer(reg.training,
           type = "text",
           align = TRUE
           )
-# 
-# boston.test <-
-#   boston.test %>%
-#   mutate(Regression = "Baseline Regression",
-#          SalePrice.Predict = predict(reg.training, boston.test),
-#          SalePrice.Error = SalePrice.Predict - SalePrice,
-#          SalePrice.AbsError = abs(SalePrice.Predict - SalePrice),
-#          SalePrice.APE = (abs(SalePrice.Predict - SalePrice)) / SalePrice.Predict)
-```
 
+```
+### Table of MAE and MAPE
+```{r}
+PhillyPrice.test <-
+  PhillyPrice.test %>%
+  mutate(SalePrice.Predict = predict(reg.training, PhillyPrice.test),
+         SalePrice.Error = SalePrice.Predict - sale_price,
+         SalePrice.AbsError = abs(SalePrice.Predict - sale_price),
+         SalePrice.APE = (abs(SalePrice.Predict - sale_price)) / SalePrice.Predict)%>%
+  filter(sale_price < 5000000)
+
+ kable(PhillyPrice.test,caption = "Test set MAE and MAPE by Sale Price")
+```
 
