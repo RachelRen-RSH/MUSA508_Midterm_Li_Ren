@@ -212,30 +212,20 @@ for (col in names(Philly_Housing_joined)[numeric_columns]) {
 }
 # price_variables <- Philly_Housing_joined[, c("houseAge")]
 # stargazer(price_variables, type = "text")
+summary_fields <- Philly_Housing_joined[c("exterior_condition","number_of_bedrooms","houseAge", "MedHHInc", "pctForeign", "pctMobility", "shooting_nn5", "dist_to_school", "dist_to_commerce", "dist_to_PPR")]
+#table_column_labels = c("Exterior Condition", "Bedrooms", "House Age", "")
+descriptions <- c("exterior_condition","number_of_bedrooms","houseAge", "MedHHInc", "pctForeign", "pctMobility", "shooting_nn5", "dist_to_school", "dist_to_commerce", "dist_to_PPR")
 
-selected_columns <- st_drop_geometry(Philly_Housing_joined) %>%
-  select(houseAge, shooting_nn5, dist_to_school)
-# Compute summary statistics for the selected columns
-summary_data <- selected_columns %>%
-  summarise(
-    Variable = "House age",
-    Mean = mean(houseAge),
-    StdDev = sd(houseAge),
-    Min = min(houseAge),
-    Max = max(houseAge)
-  ) %>%
-  bind_rows(
-    selected_columns %>%
-      summarise(
-        Variable = "Shooting_nn5",
-        Mean = mean(shooting_nn5),
-        StdDev = sd(shooting_nn5),
-        Min = min(shooting_nn5),
-        Max = max(shooting_nn5)
-      )
-  )
+stargazer(as.data.frame(summary_fields), 
+          type = "html", 
+          title = "Table 1: Summary Statistics", 
+          add.lines = list("Description" = descriptions), 
+          digits = 1, 
+          column.sep.width = "0.5cm", 
+          flip = TRUE, 
+          column.labels = c("Internal characteristics", "Demographics", "Amenities"), 
+          column.separate = c(3, 3, 4))
 
-kable(summary_data, format = "html")
 ```
 
 ### Home price correlation scatterplot with median household income
@@ -286,6 +276,39 @@ ggplot() +
   scale_fill_gradient(low = "yellow", high = "red", name = "Geographic Mobility Rate") +
   labs(title = "Choropleth Map of Geographic Mobility by Block Groups") +
   theme_minimal()
+```
+
+## Methods
+
+## Results
+### Training set lm summary results
+```{r}
+inTrain <- createDataPartition(
+              y = paste(Philly_Housing_joined$quality_grade, Philly_Housing_joined$exterior_condition.cat, Philly_Housing_joined$number_of_bedrooms.cat), 
+              p = .60, list = FALSE)
+PhillyPrice.training <- Philly_Housing_joined[inTrain,] 
+PhillyPrice.test <- Philly_Housing_joined[-inTrain,]  
+ 
+reg.training <-
+  lm(sale_price ~ ., data = as.data.frame(PhillyPrice.training) %>%
+                             dplyr::select(sale_price, exterior_condition, number_of_bedrooms, quality_grade, houseAge, shooting_nn5, dist_to_school, dist_to_commerce, dist_to_PPR, MedHHInc, pctForeign, pctMobility))
+
+summary_lm <- summary(reg.training)
+
+# Create a table of the model summary using stargazer
+stargazer(reg.training,
+          title = "Linear Regression Summary",
+          type = "text",
+          align = TRUE
+          )
+# 
+# boston.test <-
+#   boston.test %>%
+#   mutate(Regression = "Baseline Regression",
+#          SalePrice.Predict = predict(reg.training, boston.test),
+#          SalePrice.Error = SalePrice.Predict - SalePrice,
+#          SalePrice.AbsError = abs(SalePrice.Predict - SalePrice),
+#          SalePrice.APE = (abs(SalePrice.Predict - SalePrice)) / SalePrice.Predict)
 ```
 
 
