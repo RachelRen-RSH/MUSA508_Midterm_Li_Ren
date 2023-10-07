@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 ---
 title: "Midterm_markdown"
 output: html_document
@@ -508,3 +509,414 @@ Price_to_predict %>%
   mutate(predicted = predict(reg.training, Price_to_predict))
 ```
 
+=======
+---
+title: "Midterm_markdown"
+output: html_document
+date: "2023-09-29"
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+## I. Data Wrangling
+### Import packages and start the setting
+```{r setup_packages, warning = FALSE, message = FALSE}
+# Load Libraries
+library(geos)
+library(rsgeo)
+library(tidyverse)
+library(tidycensus)
+library(sf)
+library(kableExtra)
+library(knitr)
+library(dplyr)
+library(spdep)
+library(caret)
+library(ckanr)
+library(FNN)
+library(grid)
+library(gridExtra)
+library(ggcorrplot)
+library(stargazer)
+
+
+options(scipen=999)
+options(tigris_class = "sf")
+
+source("https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-Landing/master/functions.r")
+```
+
+```{r load_key, warning = FALSE, eval = FALSE}
+census_api_key("6a81f5ae68fcb8e26d2f0a80f4232c5e503b553d", overwrite = TRUE)
+```
+### Read Philadelphia block groups and housing prices
+```{r}
+Philly_block_groups <-
+  st_read("https://opendata.arcgis.com/datasets/2f982bada233478ea0100528227febce_0.geojson") %>%
+  st_transform('ESRI:102728')
+  
+Philly_price <-
+  st_read("C:/Users/Jingyi's lenovo/Desktop/Penn/Fall 2023/MUSA 5080/midterm/studentData.geojson") %>%
+  st_transform('ESRI: 102728') %>%
+  filter(toPredict == "MODELLING") ## select data containing the sales price
+
+Philly_price_clean <- Philly_price[, c("objectid", "census_tract", "exterior_condition", "number_of_bedrooms", "quality_grade", "sale_price", "year_built", "geometry")] ## Select columns we use
+
+## Calculate the age of the house
+Philly_price_clean <- 
+  Philly_price_clean %>%
+  mutate(houseAge = ifelse((year_built > 0 & year_built < 2023), 2023-year_built, 0))
+
+```
+
+### Read other variables in geojson format
+```{r}
+Shooting_victims <-
+  st_read("C:/Users/Jingyi's lenovo/Desktop/Penn/Fall 2023/MUSA 5080/midterm/shootings.geojson") %>%
+  st_transform('ESRI: 102728')
+
+PPR_Sites <-
+  st_read("C:/Users/Jingyi's lenovo/Desktop/Penn/Fall 2023/MUSA 5080/midterm/PPR_Program_Sites.geojson") %>%
+  st_transform('ESRI: 102728')
+
+Commercial_Corridors <-
+  st_read("C:/Users/Jingyi's lenovo/Desktop/Penn/Fall 2023/MUSA 5080/midterm/Commercial_Corridors.geojson") %>%
+  st_transform('ESRI: 102728')
+
+schools <- 
+  read.csv("C:/Users/Jingyi's lenovo/Desktop/Penn/Fall 2023/MUSA 5080/midterm/Schools.csv")
+
+schools.sf <- 
+  schools %>% 
+  st_as_sf(coords = c("X", "Y"), crs = 4326, agr = "constant") %>%
+  st_transform('ESRI:102728')
+```
+
+### Get and clean the variables in the 2021 Census data
+```{r results='hide'}
+## all of the variables are in block group
+blockgroup21 <-  
+  get_acs(geography = "block group",
+          variables = c("B19013_001E","B99051_005E",
+                        "B01003_001E","B07201_003E",
+                        "B07201_001E"), 
+          year=2021, state=42,
+          county=101, geometry=TRUE) %>% 
+  st_transform('ESRI:102728')
+```
+
+```{r results='hide'}
+variables2021_blockGroup <- load_variables(2021,'acs5') %>% 
+dplyr::filter(geography == 'block group')
+
+variables2021_tract <- load_variables(2021,'acs5') %>% 
+dplyr::filter(geography == 'tract')
+```
+
+```{r results='hide'}
+blockgroup21 <- 
+  blockgroup21 %>%
+  dplyr::select( -NAME, -moe) %>%
+  spread(key = variable, value = estimate) %>%
+  rename(TotalPop = B01003_001, 
+         ForeignBorn = B99051_005,
+         MedHHInc = B19013_001, 
+         MobilityDifferentHouse = B07201_003,
+         MobilityTotal = B07201_001
+         )
+
+
+# Let's create new rate variables using mutate
+
+blockgroup21 <- 
+  blockgroup21 %>%
+  mutate(pctForeign = ifelse(TotalPop > 0, ForeignBorn / TotalPop, 0),
+         pctMobility = ifelse(MobilityTotal > 0, (MobilityDifferentHouse / MobilityTotal), 0),
+         year = "2021") %>%
+  dplyr::select(-ForeignBorn,-MobilityDifferentHouse,-MobilityTotal,-TotalPop)
+```
+
+### Test the variables
+```{r}
+ggplot() +
+  geom_sf(data = Philly_block_groups, fill = "grey40") +
+  geom_sf(data = schools.sf, 
+          show.legend = "point", size = .75) +
+  mapTheme()
+```
+### Variable 1 (Neighborhood characteristics): Shooting incidents
+Calculate the count of victims shot in head within a 660 buffer of each house
+```{r}
+Shooting_victims %>% 
+group_by(wound) %>%
+  summarize(count = n()) %>%
+  arrange(-count)
+
+PhillyShootingHead.sf <-
+  Shooting_victims %>%
+    filter(wound == "Head",
+           point_y > -1) %>%
+    dplyr::select(point_y, point_x) %>%
+    na.omit() %>%
+    st_as_sf(coords = c("Long", "Lat")) %>%
+    st_transform('ESRI:102728') %>%
+    distinct()
+
+Philly_price_clean$shooting.Buffer <- Philly_price_clean %>% 
+    st_buffer(660) %>% 
+    aggregate(mutate(PhillyShootingHead.sf, counter = 1),., sum) %>%
+    pull(counter)
+```
+
+### Variable 2 (Neighborhood characteristics): School districts (Distance / enrollment / public private)
+Calculate the distance of each house to the nearest schools
+```{r}
+nearest_school <- sf::st_nearest_feature(Philly_price_clean, schools.sf)
+
+# convert to rsgeo geometries
+x <- rsgeo::as_rsgeo(Philly_price_clean)
+y <- rsgeo::as_rsgeo(schools.sf)
+
+# calculate distance
+Philly_price_clean$dist_to_school <- rsgeo::distance_euclidean_pairwise(x, y[nearest_school])
+```
+
+### Variable 3 (Neighborhood characteristics): Commercial Corridors
+Calculate the distance of each house to the nearest commercial corridors
+```{r}
+nearest_Commercial <- sf::st_nearest_feature(Philly_price_clean, Commercial_Corridors)
+
+# convert to rsgeo geometries
+x <- rsgeo::as_rsgeo(Philly_price_clean)
+y <- rsgeo::as_rsgeo(Commercial_Corridors)
+
+# calculate distance
+Philly_price_clean$dist_to_commerce <- rsgeo::distance_euclidean_pairwise(x, y[nearest_Commercial])
+```
+
+### Variable 4 (Neighborhood characteristics): Parks & Recreational Centers
+Calculate the distance of each house to the nearest PPR
+```{r}
+nearest_PPR <- sf::st_nearest_feature(Philly_price_clean, PPR_Sites)
+
+# convert to rsgeo geometries
+x <- rsgeo::as_rsgeo(Philly_price_clean)
+y <- rsgeo::as_rsgeo(PPR_Sites)
+
+# calculate distance
+Philly_price_clean$dist_to_PPR <- rsgeo::distance_euclidean_pairwise(x, y[nearest_PPR])
+```
+### Census variables: 
+Merge the census data by block groups to the housing price dataset
+```{r}
+Philly_Housing_joined <- st_join(Philly_price_clean, blockgroup21, join = st_within)
+```
+
+### Test joined data map:
+```{r}
+ggplot() +
+  geom_sf(data = blockgroup21, fill = "grey40") +
+  geom_sf(data = Philly_Housing_joined, aes(colour = q5(sale_price)), 
+          show.legend = "point", size = .75) +
+  mapTheme()
+```
+
+
+### A table of summary statistics with variable descriptions
+```{r summary_table, results = "asis"}
+### Input the average value of the variables with missing observations (N/A)
+numeric_columns <- sapply(Philly_Housing_joined, is.numeric)
+for (col in names(Philly_Housing_joined)[numeric_columns]) {
+  col_mean <- mean(Philly_Housing_joined[[col]], na.rm = TRUE)
+  Philly_Housing_joined[[col]][is.na(Philly_Housing_joined[[col]])] <- col_mean
+}
+# price_variables <- Philly_Housing_joined[, c("houseAge")]
+# stargazer(price_variables, type = "text")
+summary_fields <- Philly_Housing_joined[c("exterior_condition","number_of_bedrooms","houseAge", "MedHHInc", "pctForeign", "pctMobility", "shooting.Buffer", "dist_to_school", "dist_to_commerce", "dist_to_PPR")]
+#table_column_labels = c("Exterior Condition", "Bedrooms", "House Age", "")
+descriptions <- c("exterior_condition","number_of_bedrooms","houseAge", "MedHHInc", "pctForeign", "pctMobility", "shooting.Buffer", "dist_to_school", "dist_to_commerce", "dist_to_PPR")
+
+stargazer(as.data.frame(summary_fields), 
+          type = "html", 
+          title = "Table 1: Summary Statistics", 
+          add.lines = list("Description" = descriptions), 
+          digits = 1, 
+          column.sep.width = "0.5cm", 
+          flip = TRUE, 
+          column.labels = c("Internal characteristics", "Demographics", "Amenities"), 
+          column.separate = c(3, 3, 4))
+
+```
+### Correlation Matrix
+```{r Corre Matrix}
+numericVars <- 
+  select_if(st_drop_geometry(Philly_price_clean), is.numeric) %>% na.omit()
+
+ggcorrplot(
+  round(cor(numericVars), 1), 
+  p.mat = cor_pmat(numericVars),
+  colors = c("#25CB10", "white", "#FA7800"),
+  type="lower",
+  insig = "blank") +  
+    labs(title = "Correlation across numeric variables") 
+
+```
+
+### Home price correlation scatterplot with median household income
+```{r}
+ggplot(Philly_Housing_joined, aes(x = MedHHInc, y = sale_price)) +
+  geom_point(size = .5) +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  labs(
+    title = "Price as a function of median household income",
+    x = "Median Household Income",
+    y = "Home Price"
+  ) +
+  theme_minimal()
+```
+
+
+### Home price correlation scatterplot with house age
+```{r}
+ggplot(Philly_Housing_joined, aes(x = houseAge, y = sale_price)) +
+  geom_point(size = .5) +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  labs(
+    title = "Price as a function of house age",
+    x = "Age",
+    y = "Home Price"
+  ) +
+  theme_minimal()
+```
+### Home Price Correlation Scatterplot with Distance to Schools
+```{r}
+ggplot(Philly_Housing_joined, aes(x = dist_to_school, y = sale_price)) +
+  geom_point(size = .5) +
+  geom_smooth(method = "lm", se = FALSE, color = "orange") +
+  labs(
+    title = "Price as a function of distance to school",
+    x = "Distance to School",
+    y = "Home Price"
+  ) +
+  theme_minimal()
+```
+### Home Price Correlation with Distance to Parks and Recreation
+```{r}
+ggplot(Philly_Housing_joined, aes(x = dist_to_PPR, y = sale_price)) +
+  geom_point(size = .5) +
+  geom_smooth(method = "lm", se = FALSE, color = "orange") +
+  labs(
+    title = "Price as a function of distance to Parks and Recreation",
+    x = "Distance to Parks and Recreation",
+    y = "Home Price"
+  ) +
+  theme_minimal()
+```
+
+
+### Develop 1 map of dependent variable (sale price)
+```{r}
+mean_sale_price <- Philly_Housing_joined %>%
+  group_by(GEOID) %>%
+  summarize(MeanSalePrice = mean(sale_price))
+
+blockgroup21 <- st_join(blockgroup21, mean_sale_price, by = "GEOID")
+blockgroup21$MeanSalePrice.x[is.na(blockgroup21$MeanSalePrice)] <- 0
+ggplot() +
+  geom_sf(data = blockgroup21, aes(fill = MeanSalePrice)) +
+  scale_fill_gradient(low = "lightblue", high = "darkblue", name = "Sale Price (U.S. Dollars)") +
+  labs(title = "Choropleth Map of Housing Sale Price by Block Groups") +
+  theme_minimal()
+```
+### Develop a map of most interesting independent variables: Geographic Mobility
+```{r}
+ggplot() +
+  geom_sf(data = blockgroup21, aes(fill = pctMobility)) +
+  scale_fill_gradient(low = "yellow", high = "red", name = "Geographic Mobility Rate") +
+  labs(title = "Choropleth Map of Geographic Mobility by Block Groups") +
+  theme_minimal()
+```
+### Develop map of most interesting independent variables: School Density
+```{r}
+mean_school_dis <- Philly_Housing_joined %>%
+  group_by(GEOID) %>%
+  summarize(MeanSchoolDis = mean(dist_to_school))
+
+blockgroup21 <- st_join(blockgroup21, mean_school_dis, by = "GEOID")
+blockgroup21$MeanSchoolDis.x[is.na(blockgroup21$MeanSchoolDis)] <- 0
+ggplot() +
+  geom_sf(data = blockgroup21, aes(fill = MeanSchoolDis)) +
+  scale_fill_gradient(low = "lightblue", high = "darkblue", name = "Average Distance") +
+  labs(title = "Choropleth Map of Distance to school by Block Groups") +
+  theme_minimal()
+```
+
+### Develop a map of most interesting independent variable: Shooting Victims with Head Injuries
+```{r}
+Shooting_victims %>% 
+group_by(wound) %>%
+  summarize(count = n()) %>%
+  arrange(-count) %>%
+  kable() %>%
+  kable_styling()
+
+PhillyShootingHead.sf <-
+  Shooting_victims %>%
+    filter(wound == "Head",
+           point_y > -1) %>%
+    dplyr::select(point_y, point_x) %>%
+    na.omit() %>%
+    st_as_sf(coords = c("Long", "Lat")) %>%
+    st_transform('ESRI:102728') %>%
+    distinct()
+
+blockgroup21$shooting.Buffer <- blockgroup21 %>% 
+    st_buffer(660) %>% 
+    aggregate(mutate(PhillyShootingHead.sf, counter = 1),., sum) %>%
+    pull(counter)
+
+ggplot() +
+  geom_sf(data = blockgroup21, aes(fill = shooting.Buffer)) +
+  scale_fill_gradient(low = "#f0f9e8", high = "#0868ac", name = "Shooting victims with Head Injuries") +
+  labs(title = "Choropleth Map of Shooting Victims with Head Injuries") +
+  theme_minimal()
+```
+## Methods
+
+## Results
+### Training set lm summary results
+```{r}
+inTrain <- createDataPartition(
+              y = paste(Philly_Housing_joined$quality_grade, Philly_Housing_joined$exterior_condition.cat, Philly_Housing_joined$number_of_bedrooms.cat), 
+              p = .60, list = FALSE)
+PhillyPrice.training <- Philly_Housing_joined[inTrain,] 
+PhillyPrice.test <- Philly_Housing_joined[-inTrain,]  
+ 
+reg.training <-
+  lm(sale_price ~ ., data = as.data.frame(PhillyPrice.training) %>%
+                             dplyr::select(sale_price, exterior_condition, number_of_bedrooms, quality_grade, houseAge, shooting.Buffer, dist_to_school, dist_to_commerce, dist_to_PPR, MedHHInc, pctForeign, pctMobility))
+
+summary_lm <- summary(reg.training)
+
+# Create a table of the model summary using stargazer
+stargazer(reg.training,
+          title = "Linear Regression Summary",
+          type = "text",
+          align = TRUE
+          )
+
+```
+### Table of MAE and MAPE
+```{r}
+PhillyPrice.test <-
+  PhillyPrice.test %>%
+  mutate(SalePrice.Predict = predict(reg.training, PhillyPrice.test),
+         SalePrice.Error = SalePrice.Predict - sale_price,
+         SalePrice.AbsError = abs(SalePrice.Predict - sale_price),
+         SalePrice.APE = (abs(SalePrice.Predict - sale_price)) / SalePrice.Predict)%>%
+  filter(sale_price < 5000000)
+
+ kable(PhillyPrice.test,caption = "Test set MAE and MAPE by Sale Price")
+```
+
+>>>>>>> 07086121716c87a8c67bdb81129d737654e97c80
