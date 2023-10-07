@@ -50,10 +50,10 @@ Philly_price_all <-
   st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/MUSA508_Midterm_Li_Ren/Data/studentData.geojson") %>%
   st_transform('ESRI: 102728') 
 
-Philly_price <- Philly_price_all %>%
-  filter(toPredict == "MODELLING") ## select data containing the sales price
+# Philly_price <- Philly_price_all %>%
+#   filter(toPredict == "MODELLING") ## select data containing the sales price
 
-Philly_price_clean <- Philly_price[, c("objectid", "census_tract", "exterior_condition", "number_of_bedrooms", "quality_grade", "sale_price", "year_built", "geometry")] ## Select columns we use
+Philly_price_clean <- Philly_price_all[, c("objectid", "census_tract", "exterior_condition", "number_of_bedrooms", "quality_grade", "sale_price", "year_built", "geometry", "toPredict")] ## Select columns we use
 
 ## Calculate the age of the house
 Philly_price_clean <- 
@@ -217,15 +217,20 @@ ggplot() +
 ```
 ### A table of summary statistics with variable descriptions
 ```{r summary_table, results = "asis"}
-### Input the average value of the variables with missing observations (N/A)
 numeric_columns <- sapply(Philly_Housing_joined, is.numeric)
 for (col in names(Philly_Housing_joined)[numeric_columns]) {
   col_mean <- mean(Philly_Housing_joined[[col]], na.rm = TRUE)
   Philly_Housing_joined[[col]][is.na(Philly_Housing_joined[[col]])] <- col_mean
 }
+
+ Philly_price_Model <- Philly_Housing_joined %>%
+  filter(toPredict == "MODELLING") ## select data containing the sales price
+
+### Input the average value of the variables with missing observations (N/A)
+
 # price_variables <- Philly_Housing_joined[, c("houseAge")]
 # stargazer(price_variables, type = "text")
-summary_fields <- Philly_Housing_joined[c("exterior_condition","number_of_bedrooms","houseAge", "MedHHInc", "pctForeign", "pctMobility", "shooting.Buffer", "dist_to_school", "dist_to_commerce", "dist_to_PPR")]
+summary_fields <- Philly_price_Model[c("exterior_condition","number_of_bedrooms","houseAge", "MedHHInc", "pctForeign", "pctMobility", "shooting.Buffer", "dist_to_school", "dist_to_commerce", "dist_to_PPR")]
 #table_column_labels = c("Exterior Condition", "Bedrooms", "House Age", "")
 descriptions <- c("exterior_condition","number_of_bedrooms","houseAge", "MedHHInc", "pctForeign", "pctMobility", "shooting.Buffer", "dist_to_school", "dist_to_commerce", "dist_to_PPR")
 
@@ -243,7 +248,7 @@ stargazer(as.data.frame(summary_fields),
 ### Correlation Matrix
 ```{r Corre Matrix}
 numericVars <- 
-  select_if(st_drop_geometry(Philly_price_clean), is.numeric) %>% na.omit()
+  select_if(st_drop_geometry(Philly_price_Model), is.numeric) %>% na.omit()
 
 ggcorrplot(
   round(cor(numericVars), 1), 
@@ -257,7 +262,7 @@ ggcorrplot(
 
 ### Home price correlation scatterplot with median household income
 ```{r}
-ggplot(Philly_Housing_joined, aes(x = MedHHInc, y = sale_price)) +
+ggplot(Philly_price_Model, aes(x = MedHHInc, y = sale_price)) +
   geom_point(size = .5) +
   geom_smooth(method = "lm", se = FALSE, color = "blue") +
   labs(
@@ -271,7 +276,7 @@ ggplot(Philly_Housing_joined, aes(x = MedHHInc, y = sale_price)) +
 
 ### Home price correlation scatterplot with house age
 ```{r}
-ggplot(Philly_Housing_joined, aes(x = houseAge, y = sale_price)) +
+ggplot(Philly_price_Model, aes(x = houseAge, y = sale_price)) +
   geom_point(size = .5) +
   geom_smooth(method = "lm", se = FALSE, color = "blue") +
   labs(
@@ -283,7 +288,7 @@ ggplot(Philly_Housing_joined, aes(x = houseAge, y = sale_price)) +
 ```
 ### Home Price Correlation Scatterplot with Distance to Schools
 ```{r}
-ggplot(Philly_Housing_joined, aes(x = dist_to_school, y = sale_price)) +
+ggplot(Philly_price_Model, aes(x = dist_to_school, y = sale_price)) +
   geom_point(size = .5) +
   geom_smooth(method = "lm", se = FALSE, color = "orange") +
   labs(
@@ -295,7 +300,7 @@ ggplot(Philly_Housing_joined, aes(x = dist_to_school, y = sale_price)) +
 ```
 ### Home Price Correlation with Distance to Parks and Recreation
 ```{r}
-ggplot(Philly_Housing_joined, aes(x = dist_to_PPR, y = sale_price)) +
+ggplot(Philly_price_Model, aes(x = dist_to_PPR, y = sale_price)) +
   geom_point(size = .5) +
   geom_smooth(method = "lm", se = FALSE, color = "orange") +
   labs(
@@ -309,14 +314,14 @@ ggplot(Philly_Housing_joined, aes(x = dist_to_PPR, y = sale_price)) +
 
 ### Develop 1 map of dependent variable (sale price)
 ```{r}
-mean_sale_price <- Philly_Housing_joined %>%
+mean_sale_price <- Philly_price_Model %>%
   group_by(GEOID) %>%
   summarize(MeanSalePrice = mean(sale_price))
 
 blockgroup21 <- st_join(blockgroup21, mean_sale_price, by = "GEOID")
-blockgroup21$MeanSalePrice.x[is.na(blockgroup21$MeanSalePrice)] <- 0
+blockgroup21$MeanSalePrice.x[is.na(blockgroup21$MeanSalePrice.x)] <- 0
 ggplot() +
-  geom_sf(data = blockgroup21, aes(fill = MeanSalePrice)) +
+  geom_sf(data = blockgroup21, aes(fill = MeanSalePrice.x)) +
   scale_fill_gradient(low = "lightblue", high = "darkblue", name = "Sale Price (U.S. Dollars)") +
   labs(title = "Choropleth Map of Housing Sale Price by Block Groups") +
   theme_minimal()
@@ -331,14 +336,14 @@ ggplot() +
 ```
 ### Develop map of most interesting independent variables: School Density
 ```{r}
-mean_school_dis <- Philly_Housing_joined %>%
+mean_school_dis <- Philly_price_Model %>%
   group_by(GEOID) %>%
   summarize(MeanSchoolDis = mean(dist_to_school))
 
 blockgroup21 <- st_join(blockgroup21, mean_school_dis, by = "GEOID")
-blockgroup21$MeanSchoolDis.x[is.na(blockgroup21$MeanSchoolDis)] <- 0
+blockgroup21$MeanSchoolDis.x[is.na(blockgroup21$MeanSchoolDis.x)] <- 0
 ggplot() +
-  geom_sf(data = blockgroup21, aes(fill = MeanSchoolDis)) +
+  geom_sf(data = blockgroup21, aes(fill = MeanSchoolDis.x)) +
   scale_fill_gradient(low = "lightblue", high = "darkblue", name = "Average Distance") +
   labs(title = "Choropleth Map of Distance to school by Block Groups") +
   theme_minimal()
@@ -371,10 +376,10 @@ ggplot() + geom_sf(data = neighborhood, fill = "grey40") +
 ### Training set lm summary results
 ```{r}
 inTrain <- createDataPartition(
-              y = paste(Philly_Housing_joined$quality_grade, Philly_Housing_joined$exterior_condition.cat, Philly_Housing_joined$number_of_bedrooms.cat), 
+              y = paste(Philly_price_Model$quality_grade, Philly_price_Model$exterior_condition.cat, Philly_price_Model$number_of_bedrooms.cat), 
               p = .60, list = FALSE)
-PhillyPrice.training <- Philly_Housing_joined[inTrain,] 
-PhillyPrice.test <- Philly_Housing_joined[-inTrain,]  
+PhillyPrice.training <- Philly_price_Model[inTrain,] 
+PhillyPrice.test <- Philly_price_Model[-inTrain,]  
  
 reg.training <-
   lm(sale_price ~ ., data = as.data.frame(PhillyPrice.training) %>%
@@ -397,7 +402,7 @@ fitControl <- trainControl(method = "cv", number = 100)
 set.seed(825)
 
 reg.cv <- 
-  train(sale_price ~ ., data = st_drop_geometry(Philly_Housing_joined) %>% 
+  train(sale_price ~ ., data = st_drop_geometry(Philly_price_Model) %>% 
                                 dplyr::select(sale_price, 
                                 exterior_condition, number_of_bedrooms, quality_grade, 
                                 houseAge, shooting.Buffer, dist_to_school, 
@@ -460,13 +465,13 @@ ggplot() +
 ```
 ### Moran's I test
 ```{r}
-coords <- st_coordinates(Philly_Housing_joined) 
+coords <- st_coordinates(Philly_price_Model) 
 
 neighborList <- knn2nb(knearneigh(coords, 5))
 
 spatialWeights <- nb2listw(neighborList, style="W")
 
-Philly_Housing_joined$lagPrice <- lag.listw(spatialWeights, Philly_Housing_joined$sale_price)
+Philly_price_Model$lagPrice <- lag.listw(spatialWeights, Philly_price_Model$sale_price)
 
 coords.test <-  st_coordinates(PhillyPrice.test) 
 
@@ -501,10 +506,27 @@ ggplot(PhillyPrice.test, aes(x = lagPriceError, y = SalePrice.Error)) +
 ```
 ### Provide a map of your predicted values for where ‘toPredict’ is both “MODELLING” and “CHALLENGE”.
 ```{r}
-Price_to_predict <- Philly_price_all %>%
-  filter(toPredict == "CHALLENGE")
+# Philly_price_Challenge <- Philly_Housing_joined %>%
+#   filter(toPredict == "CHALLENGE")
+# 
+# Philly_price_Challenge <-
+#   Philly_price_Challenge %>%
+#   mutate(SalePrice.Predict = predict(reg.training, Philly_price_Challenge))
 
-Price_to_predict %>%
-  mutate(predicted = predict(reg.training, Price_to_predict))
+Philly_Housing_joined <-
+  Philly_Housing_joined %>%
+  mutate(SalePrice.Predict = predict(reg.training, Philly_Housing_joined))
 ```
+
+```{r}
+ggplot() +
+  geom_sf(data = neighborhood, fill = "grey40") +
+  geom_sf(data = Philly_Housing_joined, aes(colour = q5(SalePrice.Predict)), 
+          show.legend = "point", size = .75) +
+  scale_colour_manual(values = palette5,
+                   name="Quintile\nBreaks") +
+  labs(title="Map of predicted values") +
+  mapTheme()
+```
+
 
