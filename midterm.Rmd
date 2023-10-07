@@ -42,10 +42,15 @@ census_api_key("6a81f5ae68fcb8e26d2f0a80f4232c5e503b553d", overwrite = TRUE)
 Philly_block_groups <-
   st_read("https://opendata.arcgis.com/datasets/2f982bada233478ea0100528227febce_0.geojson") %>%
   st_transform('ESRI:102728')
+
+neighborhood <- st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/MUSA508_Midterm_Li_Ren/Data/Neighborhoods_Philadelphia.geojson") %>%
+  st_transform('ESRI:102728')
   
-Philly_price <-
+Philly_price_all <-
   st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/MUSA508_Midterm_Li_Ren/Data/studentData.geojson") %>%
-  st_transform('ESRI: 102728') %>%
+  st_transform('ESRI: 102728') 
+
+Philly_price <- Philly_price_all %>%
   filter(toPredict == "MODELLING") ## select data containing the sales price
 
 Philly_price_clean <- Philly_price[, c("objectid", "census_tract", "exterior_condition", "number_of_bedrooms", "quality_grade", "sale_price", "year_built", "geometry")] ## Select columns we use
@@ -94,6 +99,7 @@ blockgroup21 <-
 ```
 
 ```{r results='hide'}
+variables2021 <- load_variables(2021,'acs5')
 variables2021_blockGroup <- load_variables(2021,'acs5') %>% 
 dplyr::filter(geography == 'block group')
 
@@ -133,19 +139,27 @@ ggplot() +
   mapTheme()
 ```
 ### Variable 1 (Neighborhood characteristics): Shooting incidents
-Calculate the 5 average nearest neighbor distance for victims
+Calculate the count of victims shot in head within a 660 buffer of each house
 ```{r}
-st_c <- st_coordinates
+Shooting_victims %>% 
+group_by(wound) %>%
+  summarize(count = n()) %>%
+  arrange(-count)
 
-Shooting_victims <- 
+PhillyShootingHead.sf <-
   Shooting_victims %>%
-  filter(!is.na(point_x)) %>%
-  filter(!is.na(point_y))
+    filter(wound == "Head",
+           point_y > -1) %>%
+    dplyr::select(point_y, point_x) %>%
+    na.omit() %>%
+    st_as_sf(coords = c("Long", "Lat")) %>%
+    st_transform('ESRI:102728') %>%
+    distinct()
 
-Philly_price_clean <-
-  Philly_price_clean %>% 
-    mutate(
-      shooting_nn5 = nn_function(st_c(Philly_price_clean), st_c(Shooting_victims), 5))
+Philly_price_clean$shooting.Buffer <- Philly_price_clean %>% 
+    st_buffer(660) %>% 
+    aggregate(mutate(PhillyShootingHead.sf, counter = 1),., sum) %>%
+    pull(counter)
 ```
 
 ### Variable 2 (Neighborhood characteristics): School districts (Distance / enrollment / public private)
@@ -190,6 +204,7 @@ Philly_price_clean$dist_to_PPR <- rsgeo::distance_euclidean_pairwise(x, y[neares
 Merge the census data by block groups to the housing price dataset
 ```{r}
 Philly_Housing_joined <- st_join(Philly_price_clean, blockgroup21, join = st_within)
+Philly_Housing_joined <- st_join(Philly_Housing_joined, neighborhood, join = st_within)
 ```
 
 ### Test joined data map:
@@ -200,8 +215,6 @@ ggplot() +
           show.legend = "point", size = .75) +
   mapTheme()
 ```
-
-
 ### A table of summary statistics with variable descriptions
 ```{r summary_table, results = "asis"}
 ### Input the average value of the variables with missing observations (N/A)
@@ -212,9 +225,9 @@ for (col in names(Philly_Housing_joined)[numeric_columns]) {
 }
 # price_variables <- Philly_Housing_joined[, c("houseAge")]
 # stargazer(price_variables, type = "text")
-summary_fields <- Philly_Housing_joined[c("exterior_condition","number_of_bedrooms","houseAge", "MedHHInc", "pctForeign", "pctMobility", "shooting_nn5", "dist_to_school", "dist_to_commerce", "dist_to_PPR")]
+summary_fields <- Philly_Housing_joined[c("exterior_condition","number_of_bedrooms","houseAge", "MedHHInc", "pctForeign", "pctMobility", "shooting.Buffer", "dist_to_school", "dist_to_commerce", "dist_to_PPR")]
 #table_column_labels = c("Exterior Condition", "Bedrooms", "House Age", "")
-descriptions <- c("exterior_condition","number_of_bedrooms","houseAge", "MedHHInc", "pctForeign", "pctMobility", "shooting_nn5", "dist_to_school", "dist_to_commerce", "dist_to_PPR")
+descriptions <- c("exterior_condition","number_of_bedrooms","houseAge", "MedHHInc", "pctForeign", "pctMobility", "shooting.Buffer", "dist_to_school", "dist_to_commerce", "dist_to_PPR")
 
 stargazer(as.data.frame(summary_fields), 
           type = "html", 
@@ -225,6 +238,20 @@ stargazer(as.data.frame(summary_fields),
           flip = TRUE, 
           column.labels = c("Internal characteristics", "Demographics", "Amenities"), 
           column.separate = c(3, 3, 4))
+
+```
+### Correlation Matrix
+```{r Corre Matrix}
+numericVars <- 
+  select_if(st_drop_geometry(Philly_price_clean), is.numeric) %>% na.omit()
+
+ggcorrplot(
+  round(cor(numericVars), 1), 
+  p.mat = cor_pmat(numericVars),
+  colors = c("#25CB10", "white", "#FA7800"),
+  type="lower",
+  insig = "blank") +  
+    labs(title = "Correlation across numeric variables") 
 
 ```
 
@@ -254,6 +281,31 @@ ggplot(Philly_Housing_joined, aes(x = houseAge, y = sale_price)) +
   ) +
   theme_minimal()
 ```
+### Home Price Correlation Scatterplot with Distance to Schools
+```{r}
+ggplot(Philly_Housing_joined, aes(x = dist_to_school, y = sale_price)) +
+  geom_point(size = .5) +
+  geom_smooth(method = "lm", se = FALSE, color = "orange") +
+  labs(
+    title = "Price as a function of distance to school",
+    x = "Distance to School",
+    y = "Home Price"
+  ) +
+  theme_minimal()
+```
+### Home Price Correlation with Distance to Parks and Recreation
+```{r}
+ggplot(Philly_Housing_joined, aes(x = dist_to_PPR, y = sale_price)) +
+  geom_point(size = .5) +
+  geom_smooth(method = "lm", se = FALSE, color = "orange") +
+  labs(
+    title = "Price as a function of distance to Parks and Recreation",
+    x = "Distance to Parks and Recreation",
+    y = "Home Price"
+  ) +
+  theme_minimal()
+```
+
 
 ### Develop 1 map of dependent variable (sale price)
 ```{r}
@@ -277,7 +329,42 @@ ggplot() +
   labs(title = "Choropleth Map of Geographic Mobility by Block Groups") +
   theme_minimal()
 ```
+### Develop map of most interesting independent variables: School Density
+```{r}
+mean_school_dis <- Philly_Housing_joined %>%
+  group_by(GEOID) %>%
+  summarize(MeanSchoolDis = mean(dist_to_school))
 
+blockgroup21 <- st_join(blockgroup21, mean_school_dis, by = "GEOID")
+blockgroup21$MeanSchoolDis.x[is.na(blockgroup21$MeanSchoolDis)] <- 0
+ggplot() +
+  geom_sf(data = blockgroup21, aes(fill = MeanSchoolDis)) +
+  scale_fill_gradient(low = "lightblue", high = "darkblue", name = "Average Distance") +
+  labs(title = "Choropleth Map of Distance to school by Block Groups") +
+  theme_minimal()
+```
+
+### Develop a map of most interesting independent variable: Shooting Victims with Head Injuries
+```{r}
+# blockgroup21$shooting.Buffer <- blockgroup21 %>% 
+#     aggregate(mutate(PhillyShootingHead.sf, counter = 1),., sum) %>%
+#     pull(counter)
+# 
+# ggplot() +
+#   geom_sf(data = blockgroup21, aes(fill = shooting.Buffer)) +
+#   scale_fill_gradient(low = "#f0f9e8", high = "#0868ac", name = "Shooting victims with Head Injuries") +
+#   labs(title = "Choropleth Map of Shooting Victims with Head Injuries") +
+#   theme_minimal()
+ggplot() + geom_sf(data = neighborhood, fill = "grey40") +
+  stat_density2d(data = data.frame(st_coordinates(PhillyShootingHead.sf)), 
+                 aes(X, Y, fill = ..level.., alpha = ..level..),
+                 size = 0.01, bins = 40, geom = 'polygon') +
+  scale_fill_gradient(low = "#25CB10", high = "#FA7800", name = "Density") +
+  scale_alpha(range = c(0.00, 0.35), guide = "none") +
+  labs(title = "Density map of Shootings in head distribution, Philadelphia") +
+  mapTheme()
+
+```
 ## Methods
 
 ## Results
@@ -291,7 +378,7 @@ PhillyPrice.test <- Philly_Housing_joined[-inTrain,]
  
 reg.training <-
   lm(sale_price ~ ., data = as.data.frame(PhillyPrice.training) %>%
-                             dplyr::select(sale_price, exterior_condition, number_of_bedrooms, quality_grade, houseAge, shooting_nn5, dist_to_school, dist_to_commerce, dist_to_PPR, MedHHInc, pctForeign, pctMobility))
+                             dplyr::select(sale_price, exterior_condition, number_of_bedrooms, quality_grade, houseAge, shooting.Buffer, dist_to_school, dist_to_commerce, dist_to_PPR, MedHHInc, pctForeign, pctMobility))
 
 summary_lm <- summary(reg.training)
 
@@ -301,14 +388,123 @@ stargazer(reg.training,
           type = "text",
           align = TRUE
           )
-# 
-# boston.test <-
-#   boston.test %>%
-#   mutate(Regression = "Baseline Regression",
-#          SalePrice.Predict = predict(reg.training, boston.test),
-#          SalePrice.Error = SalePrice.Predict - SalePrice,
-#          SalePrice.AbsError = abs(SalePrice.Predict - SalePrice),
-#          SalePrice.APE = (abs(SalePrice.Predict - SalePrice)) / SalePrice.Predict)
+
 ```
 
+### Cross validation tests with 100 folds
+```{r}
+fitControl <- trainControl(method = "cv", number = 100)
+set.seed(825)
+
+reg.cv <- 
+  train(sale_price ~ ., data = st_drop_geometry(Philly_Housing_joined) %>% 
+                                dplyr::select(sale_price, 
+                                exterior_condition, number_of_bedrooms, quality_grade, 
+                                houseAge, shooting.Buffer, dist_to_school, 
+                                dist_to_commerce, dist_to_PPR, MedHHInc, 
+                                pctForeign, pctMobility), 
+     method = "lm", trControl = fitControl, na.action = na.pass)
+
+reg.cv
+```
+
+### Calculate the mean and standard deviation of MAE
+```{r}
+mean(reg.cv$resample[,3])
+sd(reg.cv$resample[,3])
+```
+### Plot histogram of MAE
+```{r}
+cv_results <- data.frame(Resamples = names(reg.cv$resample),
+                         MAE = reg.cv$resample$MAE)
+
+# Create a histogram of MAE values
+ggplot(cv_results, aes(x = MAE)) +
+  geom_histogram(binwidth = 1000, fill = "blue", color = "black") +
+  labs(title = "Cross-Validation Mean Absolute Error (MAE) Histogram",
+       x = "Mean Absolute Error (MAE)",
+       y = "Frequency")
+```
+
+### Plot predicted prices as a function fo observed prices
+```{r}
+PhillyPrice.test <-
+  PhillyPrice.test %>%
+  mutate(SalePrice.Predict = predict(reg.training, PhillyPrice.test),
+         SalePrice.Error = SalePrice.Predict - sale_price,
+         SalePrice.AbsError = abs(SalePrice.Predict - sale_price),
+         SalePrice.APE = (abs(SalePrice.Predict - sale_price)) / SalePrice.Predict)
+
+scatter_plot <- ggplot(data = PhillyPrice.test, aes(x = SalePrice.Predict, y = sale_price)) +
+  geom_point() +  # Add scatter points
+  geom_abline(intercept = 0, slope = 1, color = "orange", linetype = "dashed") +  # Perfect fit line
+  geom_abline(intercept = mean(PhillyPrice.test$sale_price), slope = 1, color = "green", linetype = "dashed") +  # Average predicted fit line
+  labs(title = "Scatter Plot of SalePrice vs. SalePrice.Predict",
+       x = "SalePrice.Predict",
+       y = "SalePrice")
+
+# Print the scatter plot
+print(scatter_plot)
+```
+### Provide a map of your residuals for your test set.
+```{r}
+palette5 <- c("#25CB10", "#5AB60C", "#8FA108",   "#C48C04", "#FA7800")
+ggplot() +
+  geom_sf(data = blockgroup21, fill = "grey40") +
+  geom_sf(data = PhillyPrice.test, aes(colour = q5(SalePrice.Error)), 
+          show.legend = "point", size = .75) +
+  scale_colour_manual(values = palette5,
+                   name="Quintile\nBreaks") +
+  labs(title="Map of Residuals of test set") +
+  mapTheme()
+```
+### Moran's I test
+```{r}
+coords <- st_coordinates(Philly_Housing_joined) 
+
+neighborList <- knn2nb(knearneigh(coords, 5))
+
+spatialWeights <- nb2listw(neighborList, style="W")
+
+Philly_Housing_joined$lagPrice <- lag.listw(spatialWeights, Philly_Housing_joined$sale_price)
+
+coords.test <-  st_coordinates(PhillyPrice.test) 
+
+neighborList.test <- knn2nb(knearneigh(coords.test, 5))
+
+spatialWeights.test <- nb2listw(neighborList.test, style="W")
+
+PhillyPrice.test <- PhillyPrice.test %>% 
+  mutate(lagPriceError = lag.listw(spatialWeights.test, SalePrice.Error))
+
+moranTest <- moran.mc(PhillyPrice.test$SalePrice.Error, 
+                      spatialWeights.test, nsim = 999)
+
+ggplot(as.data.frame(moranTest$res[c(1:999)]), aes(moranTest$res[c(1:999)])) +
+  geom_histogram(binwidth = 0.01) +
+  geom_vline(aes(xintercept = moranTest$statistic), colour = "#FA7800",size=1) +
+  scale_x_continuous(limits = c(-1, 1)) +
+  labs(title="Observed and permuted Moran's I",
+       subtitle= "Observed Moran's I in orange",
+       x="Moran's I",
+       y="Count") +
+  plotTheme()
+```
+### Scatter plot of error as a function of the spatial lag of price
+```{r}
+ggplot(PhillyPrice.test, aes(x = lagPriceError, y = SalePrice.Error)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "orange")+
+  labs(title = "Error as a function of the spatial lag of price",
+       x = "lagPriceError",
+       y = "SalePrice.Error")
+```
+### Provide a map of your predicted values for where ‘toPredict’ is both “MODELLING” and “CHALLENGE”.
+```{r}
+Price_to_predict <- Philly_price_all %>%
+  filter(toPredict == "CHALLENGE")
+
+Price_to_predict %>%
+  mutate(predicted = predict(reg.training, Price_to_predict))
+```
 
