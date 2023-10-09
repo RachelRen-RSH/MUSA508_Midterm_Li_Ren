@@ -1,13 +1,31 @@
 ---
 title: "Midterm_markdown"
-output: html_document
-date: "2023-09-29"
+output: 
+  html_document:
+    code_folding: hide
+date: "2023-10-11"
+author: "Sihan Ren, Jingyi Li"
+editor_options: 
+  markdown: 
+    wrap: 72
+
 ---
+# I. Introduction
+As the housing market is highly replied on the price predictions for both sellers and buyers, it is essential to make a highly accurate prediction model for them. Zillow is an American real estate company that has a large database of homes for sale and rent. However, because the range of their data is across the United States, it is hard for them to make a precise housing price prediction in a specific city. The purpose of the project is to help Zillow to make a prediction model of the housing price in Philadelphia based on the local characteristics. The model would provide a strong guide for sellers and buyers to make decisions so that they would not overpay much. It would also reduce the risks of credibility and enhance the market efficiency. 
+
+The overall modeling strategy for the project is using Ordinary Least Squares (OLS) regression with multi-variables, which is a popular statistical method used to examine the relationship between a dependent variable and predictors that might affect the value of the dependent variable. The method provides the strength of the relationship, the direction of the relationship and the goodness of the model fit. In our case, there are still some challenges we should overcome. First of all, we need to filter out the most significant and diverse variables to use in this model and find the data from the reliable sources. Second, we need to provide strong evidence and clear visualizations of plots and maps with comprehensive interpretations for the audience. Third, we should state the limitations of the OLS regression results. There are still unpredictable factors in the real world, such as Covid-19 pandemic, which impact the housing prices negatively.
+
+Our results of the model indicates that using the local data can enhance the accuracy of housing price predictions for Philadelphia. 
+
+# II. Data Wrangling
+To decide the specific variables that might affect the housing prices, we start from three categories: interior conditions, neighborhood environments, and demographic characteristics. According to Zillow's website, the living area, the house age and utilities are listed in the overview section in each house's information, which are the top factors that people consider the most when they buy a house. Therefore, we chose the column "total_area", "year_built", "quality_grade" in the original dataset to represent these three factors. For the environmental factors, people normally consider the safety and convenience to the public resources, so we explored the OpenDataPhilly website and used the data of shooting victims, commercial corridors and schools. For the demographics characteristics, we retrieved the census data in Philadelphia in 2021 from U.S. Census Bureau, which contains the median household income, percentage of foreign-born residents, and the geographic mobility to a different house.
+
+## 2.1 Import packages and start the setting
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+options(kableExtra.auto_format = FALSE)
 ```
-## I. Data Wrangling
-### Import packages and start the setting
+
 ```{r setup_packages, warning = FALSE, message = FALSE}
 # Load Libraries
 library(geos)
@@ -34,11 +52,12 @@ options(tigris_class = "sf")
 source("https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-Landing/master/functions.r")
 ```
 
-```{r load_key, warning = FALSE, eval = FALSE}
+## 2.2 Import and clean the general dataset
+Since our project is heavily focused on geographic features, we retrieved the block groups and neighborhoods boundaries from OpenDataPhilly, and we filtered the variables that we need to use from the housing price raw data.
+
+```{r load_key, echo = TRUE, warning=FALSE, results = 'hide'}
 census_api_key("6a81f5ae68fcb8e26d2f0a80f4232c5e503b553d", overwrite = TRUE)
-```
-### Read Philadelphia block groups and housing prices
-```{r}
+
 Philly_block_groups <-
   st_read("https://opendata.arcgis.com/datasets/2f982bada233478ea0100528227febce_0.geojson") %>%
   st_transform('ESRI:102728')
@@ -50,20 +69,14 @@ Philly_price_all <-
   st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/MUSA508_Midterm_Li_Ren/Data/studentData.geojson") %>%
   st_transform('ESRI: 102728') 
 
-# Philly_price <- Philly_price_all %>%
-#   filter(toPredict == "MODELLING") ## select data containing the sales price
-
-Philly_price_clean <- Philly_price_all[, c("objectid", "census_tract", "exterior_condition", "number_of_bedrooms", "quality_grade", "sale_price", "year_built", "geometry", "toPredict")] ## Select columns we use
+Philly_price_clean <- Philly_price_all[, c("objectid", "census_tract", "total_area", "interior_condition", "sale_price", "year_built", "geometry", "toPredict")] ## Select columns we use
 
 ## Calculate the age of the house
 Philly_price_clean <- 
   Philly_price_clean %>%
   mutate(houseAge = ifelse((year_built > 0 & year_built < 2023), 2023-year_built, 0))
 
-```
-
-### Read other variables in geojson format
-```{r}
+## Data of the housing nearby environments
 Shooting_victims <-
   st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/MUSA508_Midterm_Li_Ren/Data/shootings.geojson") %>%
   st_transform('ESRI: 102728')
@@ -83,10 +96,8 @@ schools.sf <-
   schools %>% 
   st_as_sf(coords = c("X", "Y"), crs = 4326, agr = "constant") %>%
   st_transform('ESRI:102728')
-```
 
-### Get and clean the variables in the 2021 Census data
-```{r results='hide'}
+##Get and clean the variables in the 2021 Census data
 ## all of the variables are in block group
 blockgroup21 <-  
   get_acs(geography = "block group",
@@ -96,18 +107,14 @@ blockgroup21 <-
           year=2021, state=42,
           county=101, geometry=TRUE) %>% 
   st_transform('ESRI:102728')
-```
 
-```{r results='hide'}
 variables2021 <- load_variables(2021,'acs5')
 variables2021_blockGroup <- load_variables(2021,'acs5') %>% 
 dplyr::filter(geography == 'block group')
 
 variables2021_tract <- load_variables(2021,'acs5') %>% 
 dplyr::filter(geography == 'tract')
-```
 
-```{r results='hide'}
 blockgroup21 <- 
   blockgroup21 %>%
   dplyr::select( -NAME, -moe) %>%
@@ -118,10 +125,7 @@ blockgroup21 <-
          MobilityDifferentHouse = B07201_003,
          MobilityTotal = B07201_001
          )
-
-
-# Let's create new rate variables using mutate
-
+## Calculate the percentage of foreign born and the mobility rate
 blockgroup21 <- 
   blockgroup21 %>%
   mutate(pctForeign = ifelse(TotalPop > 0, ForeignBorn / TotalPop, 0),
@@ -130,17 +134,9 @@ blockgroup21 <-
   dplyr::select(-ForeignBorn,-MobilityDifferentHouse,-MobilityTotal,-TotalPop)
 ```
 
-### Test the variables
-```{r}
-ggplot() +
-  geom_sf(data = Philly_block_groups, fill = "grey40") +
-  geom_sf(data = schools.sf, 
-          show.legend = "point", size = .75) +
-  mapTheme()
-```
-### Variable 1 (Neighborhood characteristics): Shooting incidents
-Calculate the count of victims shot in head within a 660 buffer of each house
-```{r}
+In order to better apply the environmental impact to the housing prices, we use two different ways. For the shooting data, we selected the number of victims who suffered the gun shot on head within 1000 feet around each house because the head wound is the most dangerous body part that caused the death. Also, because the location and time of the crime is random, a certain buffer is appropriate to measure the safety levels in a community. Even a fatal crime in a relatively far distance can cause the panic and affect the housing price. Therefore, we choose the buffer to sum crimes rather than using the average nearest neighbor distance.
+
+```{r echo=TRUE, warning=FALSE, results = 'hide'}
 Shooting_victims %>% 
 group_by(wound) %>%
   summarize(count = n()) %>%
@@ -157,110 +153,115 @@ PhillyShootingHead.sf <-
     distinct()
 
 Philly_price_clean$shooting.Buffer <- Philly_price_clean %>% 
-    st_buffer(660) %>% 
+    st_buffer(1000) %>% 
     aggregate(mutate(PhillyShootingHead.sf, counter = 1),., sum) %>%
     pull(counter)
 ```
 
-### Variable 2 (Neighborhood characteristics): School districts (Distance / enrollment / public private)
-Calculate the distance of each house to the nearest schools
-```{r}
-nearest_school <- sf::st_nearest_feature(Philly_price_clean, schools.sf)
+The second way is applied to schools, commercial corridors and public parks and recreational centers. We used the method of calculating the Euclidean distance this time because the distance to these public resources are much more important. It is used to represent the convenience of living in a house. The variables for the further analysis are the distances from each house to its nearest public amenity.
 
-# convert to rsgeo geometries
+```{r echo = TRUE, warning=FALSE, results = 'hide'}
+nearest_school <- sf::st_nearest_feature(Philly_price_clean, schools.sf)
 x <- rsgeo::as_rsgeo(Philly_price_clean)
 y <- rsgeo::as_rsgeo(schools.sf)
 
-# calculate distance
 Philly_price_clean$dist_to_school <- rsgeo::distance_euclidean_pairwise(x, y[nearest_school])
-```
 
-### Variable 3 (Neighborhood characteristics): Commercial Corridors
-Calculate the distance of each house to the nearest commercial corridors
-```{r}
 nearest_Commercial <- sf::st_nearest_feature(Philly_price_clean, Commercial_Corridors)
-
-# convert to rsgeo geometries
 x <- rsgeo::as_rsgeo(Philly_price_clean)
 y <- rsgeo::as_rsgeo(Commercial_Corridors)
-
-# calculate distance
 Philly_price_clean$dist_to_commerce <- rsgeo::distance_euclidean_pairwise(x, y[nearest_Commercial])
-```
 
-### Variable 4 (Neighborhood characteristics): Parks & Recreational Centers
-Calculate the distance of each house to the nearest PPR
-```{r}
 nearest_PPR <- sf::st_nearest_feature(Philly_price_clean, PPR_Sites)
-
-# convert to rsgeo geometries
 x <- rsgeo::as_rsgeo(Philly_price_clean)
 y <- rsgeo::as_rsgeo(PPR_Sites)
-
-# calculate distance
 Philly_price_clean$dist_to_PPR <- rsgeo::distance_euclidean_pairwise(x, y[nearest_PPR])
-```
-### Census variables: 
-Merge the census data by block groups to the housing price dataset
-```{r}
-Philly_Housing_joined <- st_join(Philly_price_clean, blockgroup21, join = st_within)
-Philly_Housing_joined <- st_join(Philly_Housing_joined, neighborhood, join = st_within)
+
 ```
 
-### Test joined data map:
-```{r}
-ggplot() +
-  geom_sf(data = blockgroup21, fill = "grey40") +
-  geom_sf(data = Philly_Housing_joined, aes(colour = q5(sale_price)), 
-          show.legend = "point", size = .75) +
-  mapTheme()
+For the census variables, we simply joined the data of each block groups to the houses within that block group. We also assigned the neighborhood of each house for the future use and divide the quality condition into four parts: good condition - 4, fair condition - 3, bad condition - 2, others - 1
+
+```{r echo = TRUE, warning=FALSE, results = 'hide'}
+Philly_Housing_joined <-
+  st_join(Philly_price_clean, blockgroup21, join = st_within)
+Philly_Housing_joined <-
+  st_join(Philly_Housing_joined, neighborhood, join = st_within)
+
+# Philly_Housing_joined <-
+#   Philly_Housing_joined %>%
+#   mutate(
+#     quality_grade.cat = case_when(
+#       quality_grade %in% c('A', 'A-', 'A+') ~ 4,
+#       quality_grade %in% c('C', 'C-', 'C+', 'B', 'B-', 'B+') ~ 3,
+#       quality_grade %in% c('D', 'D-', 'D+', 'E', 'E-', 'E+') ~ 2,
+#       TRUE ~ 1
+#     )
+#   )
 ```
+
 ### A table of summary statistics with variable descriptions
-```{r summary_table, results = "asis"}
+Table 2.1 gives us a comprehensive summary of the independent variables that might affect the housing prices. The total number of the sample is 23781. Here is a descriptions of the variables:
+
+Interior condition:
+  - total_area: the area that the owners have, which includes the living area and the outdoor area
+  - houseAge: the age of the house since it was first built.
+  
+Demographic characteristics:
+  - MedHHInc: the median household income in the past 12 months (in 2021 inflation-adjusted dollars)
+  - pctForeign: the percentage of residents who were born outside of the United States among all residents
+  - pctMobility: the percentage of geographic mobility in a different house in United States 1 year ago
+  
+Environmental impact:
+  - shooting.Buffer: the sum of victims suffered from head gun shot within a 1000 feet buffer of each house
+  - dist_to_school: the distance of a house to the nearest school
+  - dist_to_commerce: the distance of a house to the nearest commercial corridor
+  - dist_to_PPR: the distance of a house to the nearest public park and recreational center
+  
+The table calculates the maximum, minimum, mean, and standard deviation of each variable, which indicates a large variability of the data from the standard deviation. We need to consider if there are any outliers for the future analysis.
+
+```{r summary_table, echo=TRUE}
 numeric_columns <- sapply(Philly_Housing_joined, is.numeric)
 for (col in names(Philly_Housing_joined)[numeric_columns]) {
   col_mean <- mean(Philly_Housing_joined[[col]], na.rm = TRUE)
   Philly_Housing_joined[[col]][is.na(Philly_Housing_joined[[col]])] <- col_mean
 }
 
- Philly_price_Model <- Philly_Housing_joined %>%
-  filter(toPredict == "MODELLING") ## select data containing the sales price
+Philly_price_Model <- Philly_Housing_joined %>%
+  filter(toPredict == "MODELLING")
 
-### Input the average value of the variables with missing observations (N/A)
-
-# price_variables <- Philly_Housing_joined[, c("houseAge")]
-# stargazer(price_variables, type = "text")
-summary_fields <- Philly_price_Model[c("exterior_condition","number_of_bedrooms","houseAge", "MedHHInc", "pctForeign", "pctMobility", "shooting.Buffer", "dist_to_school", "dist_to_commerce", "dist_to_PPR")]
+summary_fields <- Philly_price_Model[c("total_area","houseAge", "interior_condition", "MedHHInc", "pctForeign", "pctMobility", "shooting.Buffer", "dist_to_school", "dist_to_commerce", "dist_to_PPR")]
 #table_column_labels = c("Exterior Condition", "Bedrooms", "House Age", "")
-descriptions <- c("exterior_condition","number_of_bedrooms","houseAge", "MedHHInc", "pctForeign", "pctMobility", "shooting.Buffer", "dist_to_school", "dist_to_commerce", "dist_to_PPR")
+##descriptions <- c("total_area","houseAge", "MedHHInc", "pctForeign", "pctMobility", "shooting.Buffer", "dist_to_school", "dist_to_commerce", "dist_to_PPR")
 
-stargazer(as.data.frame(summary_fields), 
-          type = "html", 
-          title = "Table 1: Summary Statistics", 
-          add.lines = list("Description" = descriptions), 
-          digits = 1, 
-          column.sep.width = "0.5cm", 
-          flip = TRUE, 
-          column.labels = c("Internal characteristics", "Demographics", "Amenities"), 
-          column.separate = c(3, 3, 4))
+stargazer(as.data.frame(summary_fields),
+          type = "text",
+          title = "Table 2.1: Summary Statistics",
+          ##add.lines = list("Description" = descriptions),
+          digits = 1,
+          column.sep.width = "1cm",
+          flip = TRUE)
 
 ```
-### Correlation Matrix
+
+### Correlation Matrix across variables
+Figure 2.1 is a correlation matrix among the numeric variables, which represents the pairwise degree of correlation between two variables in x-axis and y-axis. The correlation coefficient represents the positive, negative, or no correlation. A positive correlation means that when the value of one variable increases, the value of the other variable increases and vice versa. 0 means no correlation, and the change in one variable do not predict changes in the other. Most of the variable pairs have a 0 correlation or a slightly negative correlation, but few pairs, such as distance to school with distance to parks, are highly positively correlated.
+
 ```{r Corre Matrix}
-numericVars <- 
-  select_if(st_drop_geometry(Philly_price_Model), is.numeric) %>% na.omit()
+numericVars <- st_drop_geometry(Philly_price_Model)[, c("total_area", "houseAge", "interior_condition", "MedHHInc", "pctForeign", "pctMobility", "shooting.Buffer", "dist_to_school", "dist_to_commerce", "dist_to_PPR")]
 
 ggcorrplot(
-  round(cor(numericVars), 1), 
+  round(cor(numericVars), 1),
   p.mat = cor_pmat(numericVars),
   colors = c("#25CB10", "white", "#FA7800"),
   type="lower",
-  insig = "blank") +  
-    labs(title = "Correlation across numeric variables") 
+  insig = "blank") +
+    labs(title = "Correlation matrix across variables", 
+         label = "Figure 2.1")
 
 ```
 
 ### Home price correlation scatterplot with median household income
+This scatterplot (Figure 2.2) indicates a relationship between the home price and the median household income. The blue line is a line of best fit, which has a positive but slow slope. As the median household income increases, the house price also increases, but it would not increase a lot. Points are also concentrated in the bottom left corner, meaning that households with lower income tend to live in houses with lower prices. However, the data is more scattered for households with high income. Their home prices vary across the y-axis. There are also three outliers which have a price near 600 millions.
 ```{r}
 ggplot(Philly_price_Model, aes(x = MedHHInc, y = sale_price)) +
   geom_point(size = .5) +
@@ -268,13 +269,13 @@ ggplot(Philly_price_Model, aes(x = MedHHInc, y = sale_price)) +
   labs(
     title = "Price as a function of median household income",
     x = "Median Household Income",
-    y = "Home Price"
+    y = "Home Price",
+    label = "Figure 2.2"
   ) +
   theme_minimal()
 ```
-
-
 ### Home price correlation scatterplot with house age
+Figure 2.3 is a scatterplot showing the correlation between the house ages and the house prices. The best fit line shows that as the house ages increase, the house prices gently decreases. There is also a large variety in the home price at a specific house age. We might consider if house age is a good predictor of the house value.
 ```{r}
 ggplot(Philly_price_Model, aes(x = houseAge, y = sale_price)) +
   geom_point(size = .5) +
@@ -282,23 +283,27 @@ ggplot(Philly_price_Model, aes(x = houseAge, y = sale_price)) +
   labs(
     title = "Price as a function of house age",
     x = "Age",
-    y = "Home Price"
+    y = "Home Price",
+    label = "Figure 2.3"
   ) +
   theme_minimal()
 ```
-### Home Price Correlation Scatterplot with Distance to Schools
+### Home Price Correlation Scatterplot with total areas
+Figure 2.4 shows the correlation between the total areas of the house and the house price. There is a strong positive relationship as the slope of the best fit line is greater than the previous two plots. The house prices increase as the total areas are larger. However, there is still a variety of house prices when the total areas are relatively small. For example, there are some outliers that a small area of house has significant highest prices.
 ```{r}
-ggplot(Philly_price_Model, aes(x = dist_to_school, y = sale_price)) +
+ggplot(Philly_price_Model, aes(x = total_area, y = sale_price)) +
   geom_point(size = .5) +
   geom_smooth(method = "lm", se = FALSE, color = "orange") +
   labs(
-    title = "Price as a function of distance to school",
-    x = "Distance to School",
-    y = "Home Price"
+    title = "Price as a function of total areas",
+    x = "total areas",
+    y = "Home Price",
+    label = "Figure 2.4"
   ) +
   theme_minimal()
 ```
 ### Home Price Correlation with Distance to Parks and Recreation
+Figure 2.5 shows the correlation between the distance to the nearest parks and recreation and the house price. The slope of the best fit line is not obvious, which is almost horizontal to the x-axis. It means that no matter how far the distances to parks and recreation center change, the house prices are not affected by them too much.
 ```{r}
 ggplot(Philly_price_Model, aes(x = dist_to_PPR, y = sale_price)) +
   geom_point(size = .5) +
@@ -306,24 +311,28 @@ ggplot(Philly_price_Model, aes(x = dist_to_PPR, y = sale_price)) +
   labs(
     title = "Price as a function of distance to Parks and Recreation",
     x = "Distance to Parks and Recreation",
-    y = "Home Price"
+    y = "Home Price",
+    label = "Figure 2.5"
   ) +
   theme_minimal()
 ```
-
-
 ### Develop 1 map of dependent variable (sale price)
+Figure 2.6 is a choropleth map of the sales price distribution by block groups in Philadelphia. 
+
+
 ```{r}
 mean_sale_price <- Philly_price_Model %>%
   group_by(GEOID) %>%
   summarize(MeanSalePrice = mean(sale_price))
 
 blockgroup21 <- st_join(blockgroup21, mean_sale_price, by = "GEOID")
-blockgroup21$MeanSalePrice.x[is.na(blockgroup21$MeanSalePrice.x)] <- 0
+blockgroup21$MeanSalePrice[is.na(blockgroup21$MeanSalePrice)] <- 0
 ggplot() +
-  geom_sf(data = blockgroup21, aes(fill = MeanSalePrice.x)) +
-  scale_fill_gradient(low = "lightblue", high = "darkblue", name = "Sale Price (U.S. Dollars)") +
-  labs(title = "Choropleth Map of Housing Sale Price by Block Groups") +
+  geom_sf(data = blockgroup21, aes(fill = MeanSalePrice)) +
+  scale_fill_gradient(low = "lightblue", high = "darkblue", 
+                      name = "Sale Price (U.S. Dollars)") +
+  labs(title = "Choropleth Map of Housing Sale Price by Block Groups",
+       label = "Figure 2.6") +
   theme_minimal()
 ```
 ### Develop a map of most interesting independent variables: Geographic Mobility
@@ -331,7 +340,8 @@ ggplot() +
 ggplot() +
   geom_sf(data = blockgroup21, aes(fill = pctMobility)) +
   scale_fill_gradient(low = "yellow", high = "red", name = "Geographic Mobility Rate") +
-  labs(title = "Choropleth Map of Geographic Mobility by Block Groups") +
+  labs(title = "Choropleth Map of Geographic Mobility by Block Groups",
+       label = "Figure 2.7") +
   theme_minimal()
 ```
 ### Develop map of most interesting independent variables: School Density
@@ -341,32 +351,25 @@ mean_school_dis <- Philly_price_Model %>%
   summarize(MeanSchoolDis = mean(dist_to_school))
 
 blockgroup21 <- st_join(blockgroup21, mean_school_dis, by = "GEOID")
-blockgroup21$MeanSchoolDis.x[is.na(blockgroup21$MeanSchoolDis.x)] <- 0
+blockgroup21$MeanSchoolDis[is.na(blockgroup21$MeanSchoolDis)] <- 0
 ggplot() +
-  geom_sf(data = blockgroup21, aes(fill = MeanSchoolDis.x)) +
+  geom_sf(data = blockgroup21, aes(fill = MeanSchoolDis)) +
   scale_fill_gradient(low = "lightblue", high = "darkblue", name = "Average Distance") +
-  labs(title = "Choropleth Map of Distance to school by Block Groups") +
+  labs(title = "Choropleth Map of Distance to school by Block Groups",
+       label = "Figure 2.8") +
   theme_minimal()
 ```
 
 ### Develop a map of most interesting independent variable: Shooting Victims with Head Injuries
 ```{r}
-# blockgroup21$shooting.Buffer <- blockgroup21 %>% 
-#     aggregate(mutate(PhillyShootingHead.sf, counter = 1),., sum) %>%
-#     pull(counter)
-# 
-# ggplot() +
-#   geom_sf(data = blockgroup21, aes(fill = shooting.Buffer)) +
-#   scale_fill_gradient(low = "#f0f9e8", high = "#0868ac", name = "Shooting victims with Head Injuries") +
-#   labs(title = "Choropleth Map of Shooting Victims with Head Injuries") +
-#   theme_minimal()
 ggplot() + geom_sf(data = neighborhood, fill = "grey40") +
   stat_density2d(data = data.frame(st_coordinates(PhillyShootingHead.sf)), 
                  aes(X, Y, fill = ..level.., alpha = ..level..),
                  size = 0.01, bins = 40, geom = 'polygon') +
   scale_fill_gradient(low = "#25CB10", high = "#FA7800", name = "Density") +
   scale_alpha(range = c(0.00, 0.35), guide = "none") +
-  labs(title = "Density map of Shootings in head distribution, Philadelphia") +
+  labs(title = "Density map of Shootings in head distribution, Philadelphia",
+       label = "Figure 2.9") +
   mapTheme()
 
 ```
@@ -375,15 +378,16 @@ ggplot() + geom_sf(data = neighborhood, fill = "grey40") +
 ## Results
 ### Training set lm summary results
 ```{r}
+
 inTrain <- createDataPartition(
-              y = paste(Philly_price_Model$quality_grade, Philly_price_Model$exterior_condition.cat, Philly_price_Model$number_of_bedrooms.cat), 
+              y = paste(Philly_price_Model$interior_condition), 
               p = .60, list = FALSE)
 PhillyPrice.training <- Philly_price_Model[inTrain,] 
 PhillyPrice.test <- Philly_price_Model[-inTrain,]  
  
 reg.training <-
   lm(sale_price ~ ., data = as.data.frame(PhillyPrice.training) %>%
-                             dplyr::select(sale_price, exterior_condition, number_of_bedrooms, quality_grade, houseAge, shooting.Buffer, dist_to_school, dist_to_commerce, dist_to_PPR, MedHHInc, pctForeign, pctMobility))
+                             dplyr::select(sale_price, total_area, interior_condition, houseAge, shooting.Buffer, dist_to_school, dist_to_commerce, dist_to_PPR, MedHHInc, pctForeign, pctMobility))
 
 summary_lm <- summary(reg.training)
 
@@ -395,6 +399,25 @@ stargazer(reg.training,
           )
 
 ```
+###  table of mean absolute error and MAPE for a single test set
+```{r}
+PhillyPrice.test <-
+  PhillyPrice.test %>%
+  mutate(SalePrice.Predict = predict(reg.training, PhillyPrice.test),
+         SalePrice.Error = SalePrice.Predict - sale_price,
+         SalePrice.AbsError = abs(SalePrice.Predict - sale_price),
+         SalePrice.APE = (abs(SalePrice.Predict - sale_price)) / SalePrice.Predict)
+
+error_summary <- st_drop_geometry(PhillyPrice.test) %>%
+  summarize(
+    MAE = mean(SalePrice.AbsError),
+    MAPE = mean(SalePrice.APE)
+  )
+
+kable(error_summary, caption = "Error Summary for Test Set", digits = 2)
+
+ ##kable(PhillyPrice.test,caption = "Test set MAE and MAPE by Sale Price")
+```
 
 ### Cross validation tests with 100 folds
 ```{r}
@@ -404,7 +427,7 @@ set.seed(825)
 reg.cv <- 
   train(sale_price ~ ., data = st_drop_geometry(Philly_price_Model) %>% 
                                 dplyr::select(sale_price, 
-                                exterior_condition, number_of_bedrooms, quality_grade, 
+                                total_area, interior_condition, 
                                 houseAge, shooting.Buffer, dist_to_school, 
                                 dist_to_commerce, dist_to_PPR, MedHHInc, 
                                 pctForeign, pctMobility), 
@@ -433,12 +456,12 @@ ggplot(cv_results, aes(x = MAE)) +
 
 ### Plot predicted prices as a function fo observed prices
 ```{r}
-PhillyPrice.test <-
-  PhillyPrice.test %>%
-  mutate(SalePrice.Predict = predict(reg.training, PhillyPrice.test),
-         SalePrice.Error = SalePrice.Predict - sale_price,
-         SalePrice.AbsError = abs(SalePrice.Predict - sale_price),
-         SalePrice.APE = (abs(SalePrice.Predict - sale_price)) / SalePrice.Predict)
+# PhillyPrice.test <-
+#   PhillyPrice.test %>%
+#   mutate(SalePrice.Predict = predict(reg.training, PhillyPrice.test),
+#          SalePrice.Error = SalePrice.Predict - sale_price,
+#          SalePrice.AbsError = abs(SalePrice.Predict - sale_price),
+#          SalePrice.APE = (abs(SalePrice.Predict - sale_price)) / SalePrice.Predict)
 
 scatter_plot <- ggplot(data = PhillyPrice.test, aes(x = SalePrice.Predict, y = sale_price)) +
   geom_point() +  # Add scatter points
@@ -500,19 +523,17 @@ ggplot(as.data.frame(moranTest$res[c(1:999)]), aes(moranTest$res[c(1:999)])) +
 ggplot(PhillyPrice.test, aes(x = lagPriceError, y = SalePrice.Error)) +
   geom_point() +
   geom_smooth(method = "lm", se = FALSE, color = "orange")+
-  labs(title = "Error as a function of the spatial lag of price",
+  labs(title = "Error as a function of the spatial lag of errors",
        x = "lagPriceError",
        y = "SalePrice.Error")
 ```
 ### Provide a map of your predicted values for where ‘toPredict’ is both “MODELLING” and “CHALLENGE”.
 ```{r}
-# Philly_price_Challenge <- Philly_Housing_joined %>%
-#   filter(toPredict == "CHALLENGE")
+# levels(PhillyPrice.training$quality_grade)
+# levels(Philly_Housing_joined$quality_grade)
+# new_levels <- setdiff(levels(Philly_Housing_joined$quality_grade), levels(PhillyPrice.training$quality_grade))
+# Philly_Housing_joined$quality_grade[Philly_Housing_joined$quality_grade %in% new_levels] <- NA
 # 
-# Philly_price_Challenge <-
-#   Philly_price_Challenge %>%
-#   mutate(SalePrice.Predict = predict(reg.training, Philly_price_Challenge))
-
 Philly_Housing_joined <-
   Philly_Housing_joined %>%
   mutate(SalePrice.Predict = predict(reg.training, Philly_Housing_joined))
@@ -528,5 +549,70 @@ ggplot() +
   labs(title="Map of predicted values") +
   mapTheme()
 ```
+### Using the test set predictions, provide a map of mean absolute percentage error (MAPE) by neighborhood.
+```{r}
+left_join(
+  st_drop_geometry(PhillyPrice.test) %>%
+    group_by(name) %>%
+    summarize(meanPrice = mean(sale_price, na.rm = T)),
+  mutate(PhillyPrice.test, predict.fe =
+                        predict(lm(sale_price ~ name, data = PhillyPrice.test),
+                        PhillyPrice.test)) %>%
+    st_drop_geometry %>%
+    group_by(name) %>%
+      summarize(meanPrediction = mean(predict.fe)))
 
+reg.nhood <- lm(sale_price ~ ., data = as.data.frame(PhillyPrice.training) %>% 
+                                 dplyr::select(sale_price, total_area, interior_condition, houseAge, shooting.Buffer, dist_to_school, dist_to_commerce, dist_to_PPR, MedHHInc, pctForeign, pctMobility))
+
+PhillyPrice.test.nhood <-
+  PhillyPrice.test %>%
+  mutate(Regression = "Neighborhood Effects",  
+         sale_price.Predict = predict(reg.nhood, PhillyPrice.test),
+         sale_price.Error = sale_price.Predict- sale_price,
+         sale_price.AbsError = abs(sale_price.Predict- sale_price),
+         sale_price.APE = (abs(sale_price.Predict- sale_price)) / sale_price)
+
+mape_neighborhood <- PhillyPrice.test.nhood %>%
+  group_by(name) %>%
+  summarize(MAPE = mean(sale_price.APE, na.rm = TRUE))
+
+
+neighborhood <- st_join(neighborhood, mape_neighborhood, by = "name")
+ggplot(data = neighborhood) +
+  geom_sf(aes(fill = MAPE)) +
+  scale_fill_gradient(low = "lightblue", high = "darkblue", name = "MAPE") +
+  labs(title = "Mean Absolute Percentage Error by Neighborhood") +
+  theme_minimal()
+```
+
+
+### Provide a scatterplot plot of MAPE by neighborhood as a function of mean price by neighborhood.
+```{r}
+mean_price_summary <- PhillyPrice.test.nhood %>%
+  group_by(name) %>%
+  summarize(meanPrice = mean(sale_price, na.rm = TRUE))
+
+neighborhood <- st_join(neighborhood, mean_price_summary, by = "name")
+
+ggplot(data = neighborhood, aes(x = meanPrice.x, y = MAPE)) +
+  geom_point(alpha = 0.7) +  # color by neighborhood for distinction
+  geom_smooth(method = "lm", se = FALSE, color = "red", linetype = "dashed") +
+  labs(title = "MAPE by Neighborhood as a Function of Mean Price") +
+  theme_minimal()
+```
+### split your study area into two groups (perhaps by race or income) and test your model’s generalizability
+```{r}
+blockgroup21 <-
+  
+grid.arrange(ncol = 2,
+  ggplot() + geom_sf(data = na.omit(blockgroup21), aes(fill = raceContext)) +
+    scale_fill_manual(values = c("#25CB10", "#FA7800"), name="Race Context") +
+    labs(title = "Race Context") +
+    mapTheme() + theme(legend.position="bottom"), 
+  ggplot() + geom_sf(data = na.omit(tracts17), aes(fill = incomeContext)) +
+    scale_fill_manual(values = c("#25CB10", "#FA7800"), name="Income Context") +
+    labs(title = "Income Context") +
+    mapTheme() + theme(legend.position="bottom"))
+```
 
