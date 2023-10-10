@@ -103,7 +103,7 @@ blockgroup21 <-
   get_acs(geography = "block group",
           variables = c("B19013_001E","B99051_005E",
                         "B01003_001E","B07201_003E",
-                        "B07201_001E"), 
+                        "B07201_001E", "B02001_003E"), 
           year=2021, state=42,
           county=101, geometry=TRUE) %>% 
   st_transform('ESRI:102728')
@@ -123,15 +123,17 @@ blockgroup21 <-
          ForeignBorn = B99051_005,
          MedHHInc = B19013_001, 
          MobilityDifferentHouse = B07201_003,
-         MobilityTotal = B07201_001
+         MobilityTotal = B07201_001,
+         AfricanAmerican = B02001_003
          )
 ## Calculate the percentage of foreign born and the mobility rate
 blockgroup21 <- 
   blockgroup21 %>%
   mutate(pctForeign = ifelse(TotalPop > 0, ForeignBorn / TotalPop, 0),
          pctMobility = ifelse(MobilityTotal > 0, (MobilityDifferentHouse / MobilityTotal), 0),
+         pctAfrican = ifelse(TotalPop > 0, AfricanAmerican / TotalPop, 0),
          year = "2021") %>%
-  dplyr::select(-ForeignBorn,-MobilityDifferentHouse,-MobilityTotal,-TotalPop)
+  dplyr::select(-ForeignBorn,-MobilityDifferentHouse,-MobilityTotal,-TotalPop, -AfricanAmerican)
 ```
 
 In order to better apply the environmental impact to the housing prices, we use two different ways. For the shooting data, we selected the number of victims who suffered the gun shot on head within 1000 feet around each house because the head wound is the most dangerous body part that caused the death. Also, because the location and time of the crime is random, a certain buffer is appropriate to measure the safety levels in a community. Even a fatal crime in a relatively far distance can cause the panic and affect the housing price. Therefore, we choose the buffer to sum crimes rather than using the average nearest neighbor distance.
@@ -339,7 +341,10 @@ Figure 2.6 is a choropleth map of the sales price distribution by block groups i
 
 
 ```{r}
-mean_sale_price <- Philly_Housing_joined %>%
+Philly_price_Model <- Philly_Housing_joined %>%
+  filter(toPredict == "MODELLING")
+
+mean_sale_price <- Philly_price_Model %>%
   group_by(GEOID) %>%
   summarize(MeanSalePrice = mean(sale_price))
 
@@ -397,7 +402,9 @@ ggplot() + geom_sf(data = blockgroup21, fill = "grey40") +
   mapTheme()
 
 ```
+
 ## III. Methods
+
 ### 3.1 Coding techniques:
 We made our OLS regression analysis in R programming language. The use of packages helped us create data visualizations and statistical calculation, including kable, ggplot, stargazer, etc. We combined our code and report into an R markdown file, which can be knitted into an html file eventually.
 
@@ -410,16 +417,22 @@ First of all, we separated the data which contains the actual sale prices with t
 
 Second, we went through a 100-fold cross validation to enhance the model's performance. It split the test data into 100 parts equally and randomly to train on k-1 of the folds repeatedly. To interpret the mean absolute error and the correlation between the predicted results and the actual sale prices in a more visualized way, we created a histogram plot, a scattered plot, and a map to show its distribution.
 
-Third, we did a Moran's I test to test the spatial autocorrelation. The plot shows the value of Moran's I and the frequency of 999 random permutated I. A scatterplot of spatial lag of errors and prediction errors is also displayed. It is used to show if the spatial autocorrelation in the errors exist. With the above model, we put our unpredicted data into the regression model and showed the results in a map.
+Third, we did a Moran's I test in moran.mc function with neighbors of 5 to test the spatial autocorrelation and check the cluster pattern of the house prices. The plot shows the value of Moran's I and the frequency of 999 random permutated I. A scatterplot of spatial lag of errors and prediction errors is also displayed. It is used to show if the spatial autocorrelation in the errors exist. With the above model, we put our unpredicted data into the regression model and showed the results in a map.
 
-The last part of the analysis is the generalizability of neighborhood model, which is to test the generalizability across the space. To achieve this, we first ran another regression by each neighborhood and created a map to visualize the mean absolute percent errors by neighborhood. We also did a testing using the Census data of median household income and foreign-born residents to categorize the neighborhoods and making tables to compare the mean absolute percent errors.
+The last part of the analysis is the generalizability of neighborhood model, which is to test the generalizability across the space. To achieve this, we first ran another regression by each neighborhood and created a map to visualize the mean absolute percent errors by neighborhood. We also did a testing using the Census data of African American residents to categorize the neighborhoods and making tables to compare the mean absolute percent errors.
 
 ## Results
-### Training set lm summary results
-```{r}
-Philly_price_Model <- Philly_Housing_joined %>%
-  filter(toPredict == "MODELLING")
 
+### Training set linear model summary results
+Table 3.1 summarizes the results of the linear model when we ran the OLS regression algorithm. The total amount of observations is 14272 from the training dataset. Our dependent variable is the house sale price, and each variable below is the predictor for the house sale price. The constant is 299768.7, which is the value of house price when the value of every variable is 0. The number in the second column for each variable row is the coefficient, and the positive or negative number decides the increase or the decrease of the sale price when the variable increases one unit. For example, as house age increases one year, the sale price will decrease $86.689. The number in the parentheses is the standard errors for each coefficient, and smaller errors indicates that the coefficient is more reliable. The total area of the house has the standard error of 0.453, but that of mobility percent is 14,884.300, which means that the coefficient of the total area is more precise than the mobility percentage.
+
+The stars in the upper right of each coefficient represents the statistical significance level, which uses p-value to measure, and it gives the information of the probability to reject the null hypothesis that there is no relationship between the house sale price and each predictor. Total area, interior condition, shooting victims, distance to commercial corridors, distance to parks, median household income, foreign-born percentage and mobility rate all have a p-value less than 0.01, meaning that these variables play a significant role in predicting the sale price. Predictor distance to school has a p-value less than 0.05, while house age has a p-value larger than 0.1. Therefore, these two play a less significant role and are not a significant predictor of the housing prices.
+
+The R-square and adjusted R-square is 0.415 and 0.414, which indicates the measure of how well the model fits the data. In our model, the variables explain 41.5% of the variability in the house prices can be explained by the predictors we have. This value is an intermediate fit for the regression model.
+
+The F-statistic is used to test the hypotheses about the variances in the data. Its value in our model is 1,009.786, and it has a p-value smaller than 0.01, which indicates that the overall model is statistically significant and at least one predictor is significantly related to the housing prices.
+
+```{r}
 inTrain <- createDataPartition(
               y = paste(Philly_price_Model$interior_condition), 
               p = .60, list = FALSE)
@@ -430,17 +443,20 @@ reg.training <-
   lm(sale_price ~ ., data = as.data.frame(PhillyPrice.training) %>%
                              dplyr::select(sale_price, total_area, interior_condition, houseAge, shooting.Buffer, dist_to_school, dist_to_commerce, dist_to_PPR, MedHHInc, pctForeign, pctMobility))
 
-summary_lm <- summary(reg.training)
-
 # Create a table of the model summary using stargazer
 stargazer(reg.training,
-          title = "Linear Regression Summary",
+          title = "Table 3.1. Linear Regression Model Summary",
           type = "text",
           align = TRUE
           )
 
 ```
 ###  table of mean absolute error and MAPE for a single test set
+Table 3.2 shows the mean absolute error and mean absolute percent error. The absolute error calculates the difference between the observed price and the predicted price for each observation, and the absolute percent error is on the percentage basis. The mean value of these two is an overview of the errors in our training set. 
+
+We have the mean absolute error of 102962, meaning that the predicted prices are 102962 less or larger than the actual prices on average, and the error takes 40% of the whole predicted prices. While the MAE and MAPE refer to the validation of the fitness of the model, we estimate that our model is not problematic, but it does not give a high fitness as well. Therefore, we need a further validation approach.
+
+
 ```{r}
 PhillyPrice.test <-
   PhillyPrice.test %>%
@@ -460,6 +476,8 @@ kable(error_summary, "html", caption = "Error Summary for Test Set", digits = 2)
 ```
 
 ### Cross validation tests with 100 folds
+Below shows the 100-fold cross validation results, which calculates the average goodness of fit across 100 equal sized sublets. The Root Mean Square Error (RMSE) is 180808.5, which is the square root of the mean square error. The value is not low so that our prediction model is not the best, and cannot provide the most accurate prediction. The mean and standard deviation of Mean Absolute Error are 103295.6 and 11210.03, indicating that there is 11210.03 variation across the folds. To visualize the pattern and distribution of the Mean Absolute Error more clearly, Figure 3.3 is a histogram showing the frequency of the each mean absolute error in a $1000 binning. The frequency is high in the range of 90000 to 110000, but the distribution of errors are not cluster tightly. Therefore, the model is not very generalizable to the new data.
+
 ```{r}
 fitControl <- trainControl(method = "cv", number = 100)
 set.seed(825)
@@ -474,14 +492,12 @@ reg.cv <-
      method = "lm", trControl = fitControl, na.action = na.pass)
 
 reg.cv
-```
 
-### Calculate the mean and standard deviation of MAE
-```{r}
+#mean and standard deviation MAE
 mean(reg.cv$resample[,3])
 sd(reg.cv$resample[,3])
 ```
-### Plot histogram of MAE
+
 ```{r}
 cv_results <- data.frame(Resamples = names(reg.cv$resample),
                          MAE = reg.cv$resample$MAE)
@@ -494,20 +510,25 @@ ggplot(cv_results, aes(x = MAE)) +
        y = "Frequency")
 ```
 
-### Plot predicted prices as a function fo observed prices
+### Plot of predicted prices as a function of observed prices
+Figure 3.4 maps the plot of predicted prices as a function of observed prices. The orange line is the perfect fit line, which has a slope of 1 and means that the predicted prices are exactly the same as the observed sale prices. The green line is the average predicted fit line. These two lines are close but are not overlapped, indicating that the model is not perfectly fit, but it is still a well-fit model. Most of the plots are distributed along the perfect fit line, but there are still a large amount of points that the actual sale prices are much higher than the predicted prices.
+
 ```{r}
 scatter_plot <- ggplot(data = PhillyPrice.test, aes(x = sale_price.Predict, y = sale_price)) +
   geom_point() +  # Add scatter points
   geom_abline(intercept = 0, slope = 1, color = "orange", linetype = "dashed") +  # Perfect fit line
-  geom_abline(intercept = mean(PhillyPrice.test$sale_price), slope = 1, color = "green", linetype = "dashed") +  # Average predicted fit line
+  geom_smooth(method = "lm", se = FALSE, color = "blue", linetype = "dashed")+
   labs(title = "Scatter Plot of SalePrice vs. SalePrice.Predict",
        x = "SalePrice.Predict",
-       y = "SalePrice")
+       y = "SalePrice")+
+  scale_y_continuous(limits = c(0, max(PhillyPrice.test$sale_price)), expand = c(0,0))
 
 # Print the scatter plot
 print(scatter_plot)
 ```
-### Provide a map of your residuals for your test set.
+### A map of residuals for the test set.
+Figure 3.5 visualizes the differences between the predicted prices and the observed prices in a geospatial way. As orange color represents the largest residuals, it is widely distributed across the city but more clustered in the downtown area. The small residuals in green color are clustered in the northwest and the south of Philadelphia.
+
 ```{r}
 palette5 <- c("#25CB10", "#5AB60C", "#8FA108",   "#C48C04", "#FA7800")
 ggplot() +
@@ -519,7 +540,9 @@ ggplot() +
   labs(title="Map of Residuals of test set") +
   mapTheme()
 ```
-### Moran's I test
+### Moran's I test results
+Figure 3.6 shows the Moran's I test histogram and the observed Moran's I value. The orange line shows the observed Moran's I as 0.35 indicates that there is a moderate positive spatial autocorrelation. Areas with high house prices are somewhat likely to be clustered with high prices in their neighbors. The p-value of 0.001 refers to a statistically significance and the observed point process is more clustered than all 999 random permutations. The histogram is the requency distribution of the permuted Muran's I values. It has the highest frequency in the range of 0.
+
 ```{r}
 coords <- st_coordinates(Philly_price_Model) 
 
@@ -552,22 +575,24 @@ ggplot(as.data.frame(moranTest$res[c(1:999)]), aes(moranTest$res[c(1:999)])) +
   plotTheme()
 ```
 ### Scatter plot of error as a function of the spatial lag of price
+Figure 3.7 maps the relationship between the spatial lag of price errors and the sale price error in a scatter plot. The spatial lag of price errors is the weighted mean of the errors by 5 neighbors. Points are clustered along the regression line, and there is a positive but not very strong slope of the spatial autocorrelation in the model errors. As the error of the house price increases, the errors also increase in the nearby neighbors. 
+
 ```{r}
 ggplot(PhillyPrice.test, aes(x = lagPriceError, y = sale_price.Error)) +
   geom_point() +
   geom_smooth(method = "lm", se = FALSE, color = "orange")+
   labs(title = "Error as a function of the spatial lag of errors",
-       x = "lagPriceError",
-       y = "sale_price.Error")
+       x = "Spatial Lag Price Error",
+       y = "Sale price error")
 ```
-### Provide a map of your predicted values for where ‘toPredict’ is both “MODELLING” and “CHALLENGE”.
+### A map of predicted values for both model dataset and the unpredicted dataset.
+Figure 3.8 is a map of all predicted house prices in our dataset, including the unpredicted dataset based on our regression model. The map shows a clustered pattern of the higher and lower house prices. Houses in northeast, northwest and central Philadelphia have a higher predicted prices, while houses in central north and southwest have a lower predicted prices.
+
 ```{r}
 Philly_Housing_joined <-
   Philly_Housing_joined %>%
   mutate(sale_price.Predict = predict(reg.training, Philly_Housing_joined))
-```
 
-```{r}
 ggplot() +
   geom_sf(data = neighborhood, fill = "grey40") +
   geom_sf(data = Philly_Housing_joined, aes(colour = q5(sale_price.Predict)), 
@@ -577,8 +602,10 @@ ggplot() +
   labs(title="Map of predicted values") +
   mapTheme()
 ```
-### Using the test set predictions, provide a map of mean absolute percentage error (MAPE) by neighborhood.
-```{r}
+### A map of mean absolute percentage error (MAPE) by neighborhood.
+The following results account for the spatial process at the neighborhood scale, and we created the neighborhood fixed effect feature. We made the regression by the neighborhoods in Philadelphia and Figure 3.9 shows the Mean Absolute Percentage Error geo-spatially. Most of the neighborhoods in the neighborhood effect regression have a relative low mean absolute percentage error, but in the central and west Philadelphia in the baseline regression, these neighborhoods encounters a high MAPE. The map can represent that the neighborhood Effects model is more generalizable as there is a consistent accuracy across the neighborhoods than the baseline regression.
+
+```{r include=FALSE, echo = TRUE, results='hide'}
 left_join(
   st_drop_geometry(PhillyPrice.test) %>%
     group_by(name) %>%
@@ -589,7 +616,9 @@ left_join(
     st_drop_geometry %>%
     group_by(name) %>%
       summarize(meanPrediction = mean(predict.fe)))
+```
 
+```{r}
 reg.nhood <- lm(sale_price ~ ., data = as.data.frame(PhillyPrice.training) %>% 
                                  dplyr::select(sale_price, total_area, interior_condition, houseAge, shooting.Buffer, dist_to_school, dist_to_commerce, dist_to_PPR, MedHHInc, pctForeign, pctMobility))
 
@@ -605,48 +634,65 @@ mape_neighborhood <- PhillyPrice.test.nhood %>%
   group_by(name) %>%
   summarize(MAPE = mean(sale_price.APE, na.rm = TRUE))
 
+PhillyPrice.test <- PhillyPrice.test %>%
+  mutate(Regression = "Baseline Regression")
 
-neighborhood <- st_join(neighborhood, mape_neighborhood, by = "name")
-ggplot(data = neighborhood) +
-  geom_sf(aes(fill = MAPE)) +
-  scale_fill_gradient(low = "lightblue", high = "darkblue", name = "MAPE") +
-  labs(title = "Mean Absolute Percentage Error by Neighborhood") +
-  theme_minimal()
+bothRegressions <-
+  rbind(
+    dplyr::select(PhillyPrice.test, starts_with("sale_price"), Regression, name),
+    dplyr::select(PhillyPrice.test.nhood, starts_with("sale_price"), Regression, name))
+
+st_drop_geometry(bothRegressions) %>%
+  group_by(Regression, name) %>%
+  summarize(MAPE = mean(sale_price.APE, na.rm = T)) %>%
+  ungroup() %>% 
+  left_join(neighborhood) %>%
+    st_sf() %>%
+    ggplot() + 
+      geom_sf(aes(fill = MAPE)) +
+      facet_wrap(~Regression) +
+      scale_fill_gradient(low = palette5[1], high = palette5[5],
+                          name = "MAPE") +
+      labs(title = "Mean test set MAPE by neighborhood") +
+      mapTheme()
+
 ```
 
+### A scatter plot of MAPE by neighborhood as a function of mean price by neighborhood.
+Figure 3.10 shows the Mean Absolute Percentage Error by neighborhood as a functino of mean price by neighborhood. The regression line indicates a negative slope, meaning that as the mean price of the neighborhood increases, the mean absolute percentage error will decrease and the predictions are more accurate. However, the points are not clustered together along the line. 
 
-### Provide a scatterplot plot of MAPE by neighborhood as a function of mean price by neighborhood.
 ```{r}
 mean_price_summary <- PhillyPrice.test.nhood %>%
   group_by(name) %>%
   summarize(meanPrice = mean(sale_price, na.rm = TRUE))
 
 neighborhood <- st_join(neighborhood, mean_price_summary, by = "name")
+neighborhood <- st_join(neighborhood, mape_neighborhood, by = "name")
 
-ggplot(data = neighborhood, aes(x = meanPrice, y = MAPE)) +
+ggplot(data = neighborhood, aes(x = meanPrice, y = MAPE.x)) +
   geom_point(alpha = 0.7) +  # color by neighborhood for distinction
   geom_smooth(method = "lm", se = FALSE, color = "red", linetype = "dashed") +
   labs(title = "MAPE by Neighborhood as a Function of Mean Price") +
   theme_minimal()
 ```
-### split your study area into two groups (perhaps by race or income) and test your model’s generalizability
+### Generalizability across urban contexts
+We chose African American as a race context to test the generalizability across urban contexts. Figure 3.11 shows the distribution of the majority African-American and Majority non African-American block groups. The north Philadelphia is more segregated with more African-American groups, and the northwest Philadelphia is more segragated with non African-American groups. The center Philadelphia is integrated with both majorities. Table 3.12 calculated the mean absolute errors in baseline regression model and the neighborhood-effect regression. There is not a lot difference in the goodness of fit across the races, but the gap is larger for the neighborhood effects model, which is 10% compared with 6%.
+
+
 ```{r}
 blockgroup21 <- blockgroup21 %>%
-  mutate(ForeignContext = ifelse(pctForeign > .1, "Majority Foreign-born", "Majority Non-Foreign-born"),
-         incomeContext = ifelse(MedHHInc > 65569.4, "High Income", "Low Income"))
+  mutate(AfricanContext = ifelse(pctForeign > .1, "Majority African-American", "Majority non African-American"))
   
 grid.arrange(ncol = 2,
-  ggplot() + geom_sf(data = na.omit(blockgroup21), aes(fill = ForeignContext)) +
-    scale_fill_manual(values = c("#25CB10", "#FA7800"), name="Foreign-born Context") +
-    labs(title = "Foreign-born Context") +
-    mapTheme() + theme(legend.position="bottom"), 
-  ggplot() + geom_sf(data = na.omit(blockgroup21), aes(fill = incomeContext)) +
-    scale_fill_manual(values = c("#25CB10", "#FA7800"), name="Income Context") +
-    labs(title = "Income Context") +
+  ggplot() + 
+    geom_sf(data = na.omit(blockgroup21), aes(fill = AfricanContext)) +
+    scale_fill_manual(values = c("#25CB10", "#FA7800"), name="African-American Context") +
+    labs(title = "African-American Context") +
     mapTheme() + theme(legend.position="bottom"))
 ```
+
 ```{r}
-# B02001_001 white alone
+# B02001_003 African American
 
 PhillyPrice.test <- PhillyPrice.test %>%
   mutate(Regression = "Baseline Regression")
@@ -658,20 +704,12 @@ bothRegressions <-
     dplyr::select(PhillyPrice.test.nhood, starts_with("sale_price"), Regression, name))
 
 st_join(bothRegressions, blockgroup21) %>% 
-  group_by(Regression, ForeignContext) %>%
+  group_by(Regression, AfricanContext) %>%
   summarize(mean.MAPE = scales::percent(mean(sale_price.APE, na.rm = T))) %>%
   st_drop_geometry() %>%
-  spread(ForeignContext, mean.MAPE) %>%
+  spread(AfricanContext, mean.MAPE) %>%
   kable("html", caption = "Test set MAPE by neighborhood racial context") %>%
   kable_styling(full_width = F)
 ```
-```{r}
-st_join(bothRegressions, blockgroup21) %>% 
-  group_by(Regression, incomeContext) %>%
-  summarize(mean.MAPE = scales::percent(mean(sale_price.APE, na.rm = T))) %>%
-  st_drop_geometry() %>%
-  spread(incomeContext, mean.MAPE) %>%
-  kable("html", caption = "Test set MAPE by neighborhood racial context") %>%
-  kable_styling(full_width = F)
-```
+
 
