@@ -402,6 +402,23 @@ ggplot() + geom_sf(data = blockgroup21, fill = "grey40") +
   mapTheme()
 
 ```
+### Other map of interest.
+
+The map shows the average distance to the nearest commercial corridor by block groups. It is obvious to see that the suburban Philadelphia,especially those on the far northeast has a longer average distance to commercial corridors. Block groups in center,west, and southeast Philadelphia have similar distances less than 2000 feet. 
+```{r}
+mean_CC_dis <- Philly_Housing_joined %>%
+  group_by(GEOID) %>%
+  summarize(MeanCCDis = mean(dist_to_commerce))
+
+blockgroup21 <- st_join(blockgroup21, mean_CC_dis, by = "GEOID")
+blockgroup21$MeanCCDis[is.na(blockgroup21$MeanCCDis)] <- 0
+ggplot() +
+  geom_sf(data = blockgroup21, aes(fill = MeanCCDis)) +
+  scale_fill_gradient(low = "lightblue", high = "darkblue", name = "Average Distance to Commerical Corridors") +
+  labs(title = "Choropleth Map of Distance to Commercial Corridors by Block Groups",
+       label = "Figure 2.10") +
+  theme_minimal()
+```
 
 ## III. Methods
 
