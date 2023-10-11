@@ -10,14 +10,14 @@ editor_options:
     wrap: 72
 
 ---
-# I. Introduction
+# I. Introduction  
 As the housing market is highly replied on the price predictions for both sellers and buyers, it is essential to make a highly accurate prediction model for them. Zillow is an American real estate company that has a large database of homes for sale and rent. However, because the range of their data is across the United States, it is hard for them to make a precise housing price prediction in a specific city. The purpose of the project is to help Zillow to make a prediction model of the housing price in Philadelphia based on the local characteristics. The model would provide a strong guide for sellers and buyers to make decisions so that they would not overpay much. It would also reduce the risks of credibility and enhance the market efficiency. 
 
 The overall modeling strategy for the project is using Ordinary Least Squares (OLS) regression with multi-variables, which is a popular statistical method used to examine the relationship between a dependent variable and predictors that might affect the value of the dependent variable. The method provides the strength of the relationship, the direction of the relationship and the goodness of the model fit. In our case, there are still some challenges we should overcome. First of all, we need to filter out the most significant and diverse variables to use in this model and find the data from the reliable sources. Second, we need to provide strong evidence and clear visualizations of plots and maps with comprehensive interpretations for the audience. Third, we should state the limitations of the OLS regression results. There are still unpredictable factors in the real world, such as Covid-19 pandemic, which impact the housing prices negatively.
 
 Our results of the model indicates that using the local data can enhance the accuracy of housing price predictions for Philadelphia. 
 
-# II. Data Wrangling
+# II. Data Wrangling  
 To decide the specific variables that might affect the housing prices, we start from three categories: interior conditions, neighborhood environments, and demographic characteristics. According to Zillow's website, the living area, the house age and utilities are listed in the overview section in each house's information, which are the top factors that people consider the most when they buy a house. Therefore, we chose the column "total_area", "year_built", "quality_grade" in the original dataset to represent these three factors. For the environmental factors, people normally consider the safety and convenience to the public resources, so we explored the OpenDataPhilly website and used the data of shooting victims, commercial corridors and schools. For the demographics characteristics, we retrieved the census data in Philadelphia in 2021 from U.S. Census Bureau, which contains the median household income, percentage of foreign-born residents, and the geographic mobility to a different house.
 
 ## 2.1 Import packages and start the setting
@@ -52,7 +52,7 @@ options(tigris_class = "sf")
 source("https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-Landing/master/functions.r")
 ```
 
-## 2.2 Import and clean the general dataset
+## 2.2 Import and clean the general dataset  
 Since our project is heavily focused on geographic features, we retrieved the block groups and neighborhoods boundaries from OpenDataPhilly, and we filtered the variables that we need to use from the housing price raw data.
 
 ```{r load_key, echo = TRUE, warning=FALSE, include=FALSE, results='hide'}
@@ -62,11 +62,11 @@ Philly_block_groups <-
   st_read("https://opendata.arcgis.com/datasets/2f982bada233478ea0100528227febce_0.geojson") %>%
   st_transform('ESRI:102728')
 
-neighborhood <- st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/MUSA508_Midterm_Li_Ren/Data/Neighborhoods_Philadelphia.geojson") %>%
+neighborhood <- st_read("C:/Users/Jingyi's lenovo/Desktop/Penn/Fall 2023/MUSA 5080/midterm/Neighborhoods_Philadelphia.geojson") %>%
   st_transform('ESRI:102728')
   
 Philly_price_all <-
-  st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/MUSA508_Midterm_Li_Ren/Data/studentData.geojson") %>%
+  st_read("C:/Users/Jingyi's lenovo/Desktop/Penn/Fall 2023/MUSA 5080/midterm/studentData.geojson") %>%
   st_transform('ESRI: 102728') 
 
 Philly_price_clean <- Philly_price_all[, c("objectid", "census_tract", "total_area", "interior_condition", "sale_price", "year_built", "geometry", "toPredict")] ## Select columns we use
@@ -78,19 +78,19 @@ Philly_price_clean <-
 
 ## Data of the housing nearby environments
 Shooting_victims <-
-  st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/MUSA508_Midterm_Li_Ren/Data/shootings.geojson") %>%
+  st_read("C:/Users/Jingyi's lenovo/Desktop/Penn/Fall 2023/MUSA 5080/midterm/shootings.geojson") %>%
   st_transform('ESRI: 102728')
 
 PPR_Sites <-
-  st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/MUSA508_Midterm_Li_Ren/Data/PPR_Program_Sites.geojson") %>%
+  st_read("C:/Users/Jingyi's lenovo/Desktop/Penn/Fall 2023/MUSA 5080/midterm/PPR_Program_Sites.geojson") %>%
   st_transform('ESRI: 102728')
 
 Commercial_Corridors <-
-  st_read("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/MUSA508_Midterm_Li_Ren/Data/Commercial_Corridors.geojson") %>%
+  st_read("C:/Users/Jingyi's lenovo/Desktop/Penn/Fall 2023/MUSA 5080/midterm/Commercial_Corridors.geojson") %>%
   st_transform('ESRI: 102728')
 
 schools <- 
-  read.csv("/Users/rachelren/Desktop/Upenn/MUSA_5080/Midterm/MUSA508_Midterm_Li_Ren/Data/Schools.csv")
+  read.csv("C:/Users/Jingyi's lenovo/Desktop/Penn/Fall 2023/MUSA 5080/midterm/Schools.csv")
 
 schools.sf <- 
   schools %>% 
@@ -191,7 +191,7 @@ Philly_Housing_joined <-
 
 ```
 
-### A table of summary statistics with variable descriptions
+### A table of summary statistics with variable descriptions  
 Table 2.1 gives us a comprehensive summary of the independent variables that might affect the housing prices. The total number of the sample is 23781. Here is a descriptions of the variables:
 
 House condition:
@@ -263,7 +263,7 @@ grouped_table
 
 ```
 
-### Correlation Matrix across variables
+### Correlation Matrix across variables  
 Figure 2.1 is a correlation matrix among the numeric variables, which represents the pairwise degree of correlation between two variables in x-axis and y-axis. The correlation coefficient represents the positive, negative, or no correlation. A positive correlation means that when the value of one variable increases, the value of the other variable increases and vice versa. 0 means no correlation, and the change in one variable do not predict changes in the other. Most of the variable pairs have a 0 correlation or a slightly negative correlation, but few pairs, such as distance to school with distance to parks, are highly positively correlated.
 
 ```{r Corre Matrix}
@@ -280,7 +280,7 @@ ggcorrplot(
 
 ```
 
-### Home price correlation scatterplot with median household income
+### Home price correlation scatterplot with median household income  
 This scatterplot (Figure 2.2) indicates a relationship between the home price and the median household income. The blue line is a line of best fit, which has a positive but slow slope. As the median household income increases, the house price also increases, but it would not increase a lot. Points are also concentrated in the bottom left corner, meaning that households with lower income tend to live in houses with lower prices. However, the data is more scattered for households with high income. Their home prices vary across the y-axis. There are also three outliers which have a price near 600 millions.
 ```{r}
 ggplot(Philly_Housing_joined, aes(x = MedHHInc, y = sale_price)) +
@@ -294,7 +294,7 @@ ggplot(Philly_Housing_joined, aes(x = MedHHInc, y = sale_price)) +
   ) +
   theme_minimal()
 ```
-### Home price correlation scatterplot with house age
+### Home price correlation scatterplot with house age  
 Figure 2.3 is a scatterplot showing the correlation between the house ages and the house prices. The best fit line shows that as the house ages increase, the house prices gently decreases. There is also a large variety in the home price at a specific house age. We might consider if house age is a good predictor of the house value.
 ```{r}
 ggplot(Philly_Housing_joined, aes(x = houseAge, y = sale_price)) +
@@ -308,7 +308,7 @@ ggplot(Philly_Housing_joined, aes(x = houseAge, y = sale_price)) +
   ) +
   theme_minimal()
 ```
-### Home Price Correlation Scatterplot with total areas
+### Home Price Correlation Scatterplot with total areas  
 Figure 2.4 shows the correlation between the total areas of the house and the house price. There is a strong positive relationship as the slope of the best fit line is greater than the previous two plots. The house prices increase as the total areas are larger. However, there is still a variety of house prices when the total areas are relatively small. For example, there are some outliers that a small area of house has significant highest prices.
 ```{r}
 ggplot(Philly_Housing_joined, aes(x = total_area, y = sale_price)) +
@@ -322,7 +322,7 @@ ggplot(Philly_Housing_joined, aes(x = total_area, y = sale_price)) +
   ) +
   theme_minimal()
 ```
-### Home Price Correlation with Distance to Parks and Recreation
+### Home Price Correlation with Distance to Parks and Recreation  
 Figure 2.5 shows the correlation between the distance to the nearest parks and recreation and the house price. The slope of the best fit line is not obvious, which is almost horizontal to the x-axis. It means that no matter how far the distances to parks and recreation center change, the house prices are not affected by them too much.
 ```{r}
 ggplot(Philly_Housing_joined, aes(x = dist_to_PPR, y = sale_price)) +
@@ -336,7 +336,7 @@ ggplot(Philly_Housing_joined, aes(x = dist_to_PPR, y = sale_price)) +
   ) +
   theme_minimal()
 ```
-### Develop 1 map of dependent variable (sale price)
+### Develop 1 map of dependent variable (sale price)  
 Figure 2.6 is a choropleth map of the sales price distribution by block groups in Philadelphia. The housing value is grouped in equal intervals, and lighter blue represents the lower sale prices, while the darker blue represents the higher sale prices. Most of the neighborhoods have a relative low prices less than 1000000. Prices are higher in the northwest block groups as well as the downtown areas.
 
 
@@ -358,7 +358,7 @@ ggplot() +
        label = "Figure 2.6") +
   theme_minimal()
 ```
-### Develop a map of most interesting independent variables: Geographic Mobility
+### Develop a map of most interesting independent variables: Geographic Mobility  
 The map of the geographic mobility by block groups shows a scattered pattern. There is no cluster that several adjacent block groups have the highest or the lowest mobility rate. However, there is one block group in the dark blue which has a significant high mobility rate. 
 
 ```{r}
@@ -369,7 +369,7 @@ ggplot() +
        label = "Figure 2.7") +
   theme_minimal()
 ```
-### Develop map of most interesting independent variables: School Density
+### Develop map of most interesting independent variables: School Density  
 The map shows the average distance to the nearest school by block groups. It is obvious to see that the south Philadelphia has a shorter average distance and the distance is longer in the most blocks of the north Philadelphia. Block groups in downtown Philadelphia have similar distances from 2000 to 3000 feet.
 
 ```{r}
@@ -387,7 +387,7 @@ ggplot() +
   theme_minimal()
 ```
 
-### Develop a map of most interesting independent variable: Shooting Victims with Head Injuries
+### Develop a map of most interesting independent variable: Shooting Victims with Head Injuries  
 The heat map shows the general density of victims who suffered from head gun shot wounds. It is clear to see that the incidents happened mostly in the downtown and west of Philadelphia. 
 
 ```{r}
@@ -405,14 +405,14 @@ ggplot() + geom_sf(data = blockgroup21, fill = "grey40") +
 
 ## III. Methods
 
-### 3.1 Coding techniques:
+### 3.1 Coding techniques:  
 We made our OLS regression analysis in R programming language. The use of packages helped us create data visualizations and statistical calculation, including kable, ggplot, stargazer, etc. We combined our code and report into an R markdown file, which can be knitted into an html file eventually.
 
-### 3.2 Data Analysis:
-#### Data integration:
+### 3.2 Data Analysis:  
+#### Data integration:  
 In part II, we introduced our datasets and provided a general summary of the statistics of our predictors. The correlation matrix, scatterplots and geospatial visualization created a multidimensional way to understand the predictors. A comprehensive table of summary statistics was produced to provide insights into the distribution of all variables in the dataset. These variables were sorted into categories for easy reference: internal characteristics, amenities/public services, and spatial structure.
 
-#### OLS Regression analysis
+#### OLS Regression analysis  
 First of all, we separated the data which contains the actual sale prices with the data which needs to be predicted. For the modelling data, we split it into training and test sets in the proportion of 3:2. The training data is for the machine learning algorithm to learn and make the model with the minimum error, while the test data is used to evaluate the model's performance for predicting the house values. Therefore, we made a linear regression model using the lm function in R, and the values in the model will be interpreted in the Results section. Mean absolute error is also calculated for the test set to measure the accuracy of the model. 
 
 Second, we went through a 100-fold cross validation to enhance the model's performance. It split the test data into 100 parts equally and randomly to train on k-1 of the folds repeatedly. To interpret the mean absolute error and the correlation between the predicted results and the actual sale prices in a more visualized way, we created a histogram plot, a scattered plot, and a map to show its distribution.
@@ -423,7 +423,7 @@ The last part of the analysis is the generalizability of neighborhood model, whi
 
 ## Results
 
-### Training set linear model summary results
+### Training set linear model summary results  
 Table 3.1 summarizes the results of the linear model when we ran the OLS regression algorithm. The total amount of observations is 14272 from the training dataset. Our dependent variable is the house sale price, and each variable below is the predictor for the house sale price. The constant is 299768.7, which is the value of house price when the value of every variable is 0. The number in the second column for each variable row is the coefficient, and the positive or negative number decides the increase or the decrease of the sale price when the variable increases one unit. For example, as house age increases one year, the sale price will decrease $86.689. The number in the parentheses is the standard errors for each coefficient, and smaller errors indicates that the coefficient is more reliable. The total area of the house has the standard error of 0.453, but that of mobility percent is 14,884.300, which means that the coefficient of the total area is more precise than the mobility percentage.
 
 The stars in the upper right of each coefficient represents the statistical significance level, which uses p-value to measure, and it gives the information of the probability to reject the null hypothesis that there is no relationship between the house sale price and each predictor. Total area, interior condition, shooting victims, distance to commercial corridors, distance to parks, median household income, foreign-born percentage and mobility rate all have a p-value less than 0.01, meaning that these variables play a significant role in predicting the sale price. Predictor distance to school has a p-value less than 0.05, while house age has a p-value larger than 0.1. Therefore, these two play a less significant role and are not a significant predictor of the housing prices.
@@ -451,7 +451,7 @@ stargazer(reg.training,
           )
 
 ```
-###  table of mean absolute error and MAPE for a single test set
+###  table of mean absolute error and MAPE for a single test set  
 Table 3.2 shows the mean absolute error and mean absolute percent error. The absolute error calculates the difference between the observed price and the predicted price for each observation, and the absolute percent error is on the percentage basis. The mean value of these two is an overview of the errors in our training set. 
 
 We have the mean absolute error of 102962, meaning that the predicted prices are 102962 less or larger than the actual prices on average, and the error takes 40% of the whole predicted prices. While the MAE and MAPE refer to the validation of the fitness of the model, we estimate that our model is not problematic, but it does not give a high fitness as well. Therefore, we need a further validation approach.
@@ -475,7 +475,7 @@ kable(error_summary, "html", caption = "Error Summary for Test Set", digits = 2)
   kable_styling()
 ```
 
-### Cross validation tests with 100 folds
+### Cross validation tests with 100 folds  
 Below shows the 100-fold cross validation results, which calculates the average goodness of fit across 100 equal sized sublets. The Root Mean Square Error (RMSE) is 180808.5, which is the square root of the mean square error. The value is not low so that our prediction model is not the best, and cannot provide the most accurate prediction. The mean and standard deviation of Mean Absolute Error are 103295.6 and 11210.03, indicating that there is 11210.03 variation across the folds. To visualize the pattern and distribution of the Mean Absolute Error more clearly, Figure 3.3 is a histogram showing the frequency of the each mean absolute error in a $1000 binning. The frequency is high in the range of 90000 to 110000, but the distribution of errors are not cluster tightly. Therefore, the model is not very generalizable to the new data.
 
 ```{r}
@@ -510,8 +510,8 @@ ggplot(cv_results, aes(x = MAE)) +
        y = "Frequency")
 ```
 
-### Plot of predicted prices as a function of observed prices
-Figure 3.4 maps the plot of predicted prices as a function of observed prices. The orange line is the perfect fit line, which has a slope of 1 and means that the predicted prices are exactly the same as the observed sale prices. The green line is the average predicted fit line. These two lines are close but are not overlapped, indicating that the model is not perfectly fit, but it is still a well-fit model. Most of the plots are distributed along the perfect fit line, but there are still a large amount of points that the actual sale prices are much higher than the predicted prices.
+### Plot of predicted prices as a function of observed prices  
+Figure 3.4 maps the plot of predicted prices as a function of observed prices. The orange line is the perfect fit line, which has a slope of 1 and means that the predicted prices are exactly the same as the observed sale prices. The blue line is the average predicted fit line. These two lines are close but are not overlapped, indicating that the model is not perfectly fit, but it is still a well-fit model. Most of the plots are distributed along the perfect fit line, but there are still a large amount of points that the actual sale prices are much higher than the predicted prices.
 
 ```{r}
 scatter_plot <- ggplot(data = PhillyPrice.test, aes(x = sale_price.Predict, y = sale_price)) +
@@ -526,7 +526,7 @@ scatter_plot <- ggplot(data = PhillyPrice.test, aes(x = sale_price.Predict, y = 
 # Print the scatter plot
 print(scatter_plot)
 ```
-### A map of residuals for the test set.
+### A map of residuals for the test set.  
 Figure 3.5 visualizes the differences between the predicted prices and the observed prices in a geospatial way. As orange color represents the largest residuals, it is widely distributed across the city but more clustered in the downtown area. The small residuals in green color are clustered in the northwest and the south of Philadelphia.
 
 ```{r}
@@ -540,7 +540,7 @@ ggplot() +
   labs(title="Map of Residuals of test set") +
   mapTheme()
 ```
-### Moran's I test results
+### Moran's I test results  
 Figure 3.6 shows the Moran's I test histogram and the observed Moran's I value. The orange line shows the observed Moran's I as 0.35 indicates that there is a moderate positive spatial autocorrelation. Areas with high house prices are somewhat likely to be clustered with high prices in their neighbors. The p-value of 0.001 refers to a statistically significance and the observed point process is more clustered than all 999 random permutations. The histogram is the requency distribution of the permuted Muran's I values. It has the highest frequency in the range of 0.
 
 ```{r}
@@ -574,7 +574,7 @@ ggplot(as.data.frame(moranTest$res[c(1:999)]), aes(moranTest$res[c(1:999)])) +
        y="Count") +
   plotTheme()
 ```
-### Scatter plot of error as a function of the spatial lag of price
+### Scatter plot of error as a function of the spatial lag of price  
 Figure 3.7 maps the relationship between the spatial lag of price errors and the sale price error in a scatter plot. The spatial lag of price errors is the weighted mean of the errors by 5 neighbors. Points are clustered along the regression line, and there is a positive but not very strong slope of the spatial autocorrelation in the model errors. As the error of the house price increases, the errors also increase in the nearby neighbors. 
 
 ```{r}
@@ -585,7 +585,7 @@ ggplot(PhillyPrice.test, aes(x = lagPriceError, y = sale_price.Error)) +
        x = "Spatial Lag Price Error",
        y = "Sale price error")
 ```
-### A map of predicted values for both model dataset and the unpredicted dataset.
+### A map of predicted values for both model dataset and the unpredicted dataset.  
 Figure 3.8 is a map of all predicted house prices in our dataset, including the unpredicted dataset based on our regression model. The map shows a clustered pattern of the higher and lower house prices. Houses in northeast, northwest and central Philadelphia have a higher predicted prices, while houses in central north and southwest have a lower predicted prices.
 
 ```{r}
@@ -602,7 +602,7 @@ ggplot() +
   labs(title="Map of predicted values") +
   mapTheme()
 ```
-### A map of mean absolute percentage error (MAPE) by neighborhood.
+### A map of mean absolute percentage error (MAPE) by neighborhood.  
 The following results account for the spatial process at the neighborhood scale, and we created the neighborhood fixed effect feature. We made the regression by the neighborhoods in Philadelphia and Figure 3.9 shows the Mean Absolute Percentage Error geo-spatially. Most of the neighborhoods in the neighborhood effect regression have a relative low mean absolute percentage error, but in the central and west Philadelphia in the baseline regression, these neighborhoods encounters a high MAPE. The map can represent that the neighborhood Effects model is more generalizable as there is a consistent accuracy across the neighborhoods than the baseline regression.
 
 ```{r include=FALSE, echo = TRUE, results='hide'}
@@ -658,8 +658,8 @@ st_drop_geometry(bothRegressions) %>%
 
 ```
 
-### A scatter plot of MAPE by neighborhood as a function of mean price by neighborhood.
-Figure 3.10 shows the Mean Absolute Percentage Error by neighborhood as a functino of mean price by neighborhood. The regression line indicates a negative slope, meaning that as the mean price of the neighborhood increases, the mean absolute percentage error will decrease and the predictions are more accurate. However, the points are not clustered together along the line. 
+### A scatter plot of MAPE by neighborhood as a function of mean price by neighborhood.  
+Figure 3.10 shows the Mean Absolute Percentage Error by neighborhood as a function of mean price by neighborhood. The regression line indicates a negative slope, meaning that as the mean price of the neighborhood increases, the mean absolute percentage error will decrease and the predictions are more accurate. However, the points are not clustered together along the line. 
 
 ```{r}
 mean_price_summary <- PhillyPrice.test.nhood %>%
@@ -669,13 +669,13 @@ mean_price_summary <- PhillyPrice.test.nhood %>%
 neighborhood <- st_join(neighborhood, mean_price_summary, by = "name")
 neighborhood <- st_join(neighborhood, mape_neighborhood, by = "name")
 
-ggplot(data = neighborhood, aes(x = meanPrice, y = MAPE.x)) +
+ggplot(data = neighborhood, aes(x = meanPrice.x, y = MAPE)) +
   geom_point(alpha = 0.7) +  # color by neighborhood for distinction
   geom_smooth(method = "lm", se = FALSE, color = "red", linetype = "dashed") +
   labs(title = "MAPE by Neighborhood as a Function of Mean Price") +
   theme_minimal()
 ```
-### Generalizability across urban contexts
+### Generalizability across urban contexts  
 We chose African American as a race context to test the generalizability across urban contexts. Figure 3.11 shows the distribution of the majority African-American and Majority non African-American block groups. The north Philadelphia is more segregated with more African-American groups, and the northwest Philadelphia is more segragated with non African-American groups. The center Philadelphia is integrated with both majorities. Table 3.12 calculated the mean absolute errors in baseline regression model and the neighborhood-effect regression. There is not a lot difference in the goodness of fit across the races, but the gap is larger for the neighborhood effects model, which is 10% compared with 6%.
 
 
@@ -712,4 +712,16 @@ st_join(bothRegressions, blockgroup21) %>%
   kable_styling(full_width = F)
 ```
 
+## Conclusion  
+In conclusion, in order to achieve our primarily goal on understanding the factors influencing housing prices in Philadelphia, we used data from OpenDataPhilly and went through all kinds of analysis including using maps, charts, and regressions. The results of our analysis went though testing by validation, accuracy and generalizability. 
+  Data preparing was done through a major of three steps: collecting, selecting, and manipulating. Collecting and selecting is a very subjective process, for it is highly depending on what we think might be influencing the housing price. However, manipulation of the data needs to be done through approaches that can best highlight the characteristic of influential factors. For example, to better assess the impact of exterior environment on housing prices, we employed distinct approaches on factors we selected for analysis. For shooting incidents data, we focused on the number of victims who suffered head gunshot wounds within a 1000-foot radius of each house. This approach aimed to capture the most critical injuries affecting safety. To gauge the proximity of houses to schools, commercial corridors, and public parks, we calculated Euclidean distances, emphasizing the convenience of living in each house. Additionally, we incorporated census variables, linking block group data to individual houses to study the demography that can impact housing value. 
+  In our analysis, we present a table summarizing various independent variables that might impact housing prices. The table includes statistics for interior house condition, demographic characteristics, and exterior environment. Notably, we identify high variability, especially in some variables, as evidenced by the standard deviations. Additionally, we consider potential outliers in the dataset.
+  Moreover, we display a correlation matrix illustrating the relationships between numeric variables. While many pairs show no or slight correlation, some, like the distance to schools and distance to parks, exhibit strong positive correlations with housing price.
+We also analyze scatterplots to explore the linear relationship between housing prices and the factors, such as median household income, house age, and total area. These visualizations reveal trends such as the relationship between housing prices and total area, where larger houses tend to command higher prices. However, the strong positive factors such as distance to parks show weaker linear association on scatterplot.
+  Furthermore, we present a choropleth map showing the distribution of housing prices by block groups in Philadelphia. The map demonstrates that most neighborhoods have relatively low prices, except for some in the northwest and downtown areas. And we create maps to highlight specific independent variables of interest. These include maps of geographic mobility, school density, and shooting incidents with head injuries, which offer insights into their spatial distribution and impact on housing prices. And maps of our variables suggests that northwest and downtown areas have relatively high mobility rate, medium distance to schools, and more frequent shooting incident with head injuries.
+  Our methods encompassed OLS regression in R, utilizing packages such as kable, ggplot, and stargazer. We separated the data into training and test sets, employed cross-validation, and assessed goodness of fit using metrics like mean absolute error (MAE) and mean absolute percent error (MAPE). We also incorporated spatial autocorrelation of Moran I to explore the degree of spatial clustering or dispersion of the variables across a geographic area.
+  Results indicate that the regression model explains approximately 41.5% of the variability in housing prices. The F-statistic, with an overall p-value less than 0.01, suggests that the overall model is statistically significant. Some variables, such as total area, interior condition, shooting incidents, and median household income, have low p-values, indicating their significance in predicting housing prices. In contrast, house age and distance to schools have less significance.
+  Cross-validation results revealed a low mean Root Mean Square Error (RMSE) of 180808.5 which indicates that our model is not capable to provide the most accurate prediction of housing prices. The MAE is with higher frequencies in the 90000-110000 range and failed to be generalizable to the new data. We observed a scattered distribution in residual plots-- a well-fit model, indicating some variation in the model's performance. Additionally, a Moran's I test showed a moderate positive spatial autocorrelation in housing prices. We also explored the generalizability of neighborhood models and the influence of race on model performance. The Mean Absolute Percentage Error (MAPE) by neighborhood showed that the neighborhood effects model exhibited consistent accuracy across neighborhoods, while the baseline regression displayed higher MAPE in specific areas.
+  In summary, our analysis provides insights into the factors influencing housing prices in Philadelphia and highlights the strengths and limitations of our predictive models. Further research and refinement of the models may be necessary to achieve higher accuracy and predictive power.
 
+## Discussion
